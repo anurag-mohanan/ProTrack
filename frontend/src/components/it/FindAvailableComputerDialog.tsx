@@ -2,7 +2,10 @@ import { useState } from 'react';
 import {
   Alert,
   Box,
+  Checkbox,
   Chip,
+  FormControlLabel,
+  Switch,
   Dialog,
   DialogActions,
   DialogContent,
@@ -58,7 +61,14 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
   const [onDate, setOnDate] = useState(defaults?.on_date || today);
   const [shiftId, setShiftId] = useState(defaults?.shift_id || '');
   const [seatType, setSeatType] = useState(defaults?.computer_type || '');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [showUnavailable, setShowUnavailable] = useState(false);
+  const [monitorsNeeded, setMonitorsNeeded] = useState(String(defaults?.monitor_quantity ?? ''));
+  const [mouse3dNeeded, setMouse3dNeeded] = useState(Boolean(defaults?.mouse_3d_required));
   const [assignUserId, setAssignUserId] = useState(defaults?.user_id || '');
+  const customWindow = Boolean(startTime && endTime);
+  const windowReady = Boolean(shiftId || customWindow);
   const resolvedUserId = defaults?.user_id || assignUserId;
 
   const referenceQuery = useQuery({
@@ -72,20 +82,28 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
     enabled: open && !defaults?.user_id,
   });
   const availabilityQuery = useQuery({
-    queryKey: [...itInventoryKeys.all, 'find-available', onDate, shiftId, seatType],
+    queryKey: [...itInventoryKeys.all, 'find-available', onDate, shiftId, seatType, startTime, endTime],
     queryFn: () =>
       fetchComputerAvailability({
         on_date: onDate,
-        shift_id: shiftId,
+        shift_id: shiftId || undefined,
+        start_time: customWindow ? startTime : undefined,
+        end_time: customWindow ? endTime : undefined,
         seat_type: seatType || undefined,
-        only_available: true,
+        only_available: false,
       }),
-    enabled: open && Boolean(onDate && shiftId),
+    enabled: open && Boolean(onDate) && windowReady,
   });
 
   const assignMutation = useMutation({
     mutationFn: (assetId: string) =>
-      assignAsset(assetId, { user_id: resolvedUserId, shift_id: shiftId, assigned_date: onDate }),
+      assignAsset(assetId, {
+        user_id: resolvedUserId,
+        shift_id: shiftId || null,
+        start_time: customWindow ? startTime : null,
+        end_time: customWindow ? endTime : null,
+        assigned_date: onDate,
+      }),
     onSuccess: (asset) => {
       const name =
         defaults?.employee_name ||
@@ -100,11 +118,22 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
   });
 
   const shifts = referenceQuery.data?.shifts ?? [];
-  const computers = availabilityQuery.data?.computers ?? [];
-  const peripheralsNeeded = [
-    defaults?.monitor_quantity ? `${defaults.monitor_quantity} monitor(s)` : null,
-    defaults?.mouse_3d_required ? '3D mouse' : null,
-  ].filter(Boolean);
+  const slotCode = availabilityQuery.data?.shifts[0]?.shift_code;
+  const allComputers = availabilityQuery.data?.computers ?? [];
+  const slotOf = (c: (typeof allComputers)[number]) => c.shifts[0];
+  const freeComputers = allComputers.filter((c) => slotOf(c)?.status === 'AVAILABLE');
+  const computers = showUnavailable ? allComputers : freeComputers;
+  const peripheralFree = (role: string) =>
+    slotCode
+      ? availabilityQuery.data?.peripherals?.find((p) => p.role === role)?.available_by_shift[slotCode] ?? 0
+      : 0;
+  const monitorsRequired = Number(monitorsNeeded) || 0;
+  const peripheralChecks = [
+    monitorsRequired
+      ? { label: `${monitorsRequired} monitor(s)`, free: peripheralFree('monitor'), need: monitorsRequired }
+      : null,
+    mouse3dNeeded ? { label: '3D mouse', free: peripheralFree('mouse_3d'), need: 1 } : null,
+  ].filter((row): row is { label: string; free: number; need: number } => row !== null);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -136,7 +165,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
               label="Shift"
               value={shiftId}
               options={[
-                { value: '', label: 'Select shift' },
+                { value: '', label: customWindow ? 'None (custom window)' : 'Select shift' },
                 ...shifts.map((s) => ({ value: s.id, label: s.label })),
               ]}
               onChange={(e) => setShiftId(String(e.target.value))}
@@ -148,22 +177,73 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
               onChange={(e) => setSeatType(String(e.target.value))}
             />
           </Stack>
-          {peripheralsNeeded.length ? (
-            <Typography variant="body2" color="text.secondary">
-              Also required: {peripheralsNeeded.join(', ')}. Assign peripherals to the employee after the
-              computer; the virtual seat shows what is still missing.
-            </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <FormField
+              label="Start time (optional)"
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <FormField
+              label="End time (optional)"
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              helper="Overrides the shift hours; overnight allowed"
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <FormField
+              label="Monitors needed"
+              type="number"
+              value={monitorsNeeded}
+              onChange={(e) => setMonitorsNeeded(e.target.value)}
+              slotProps={{ htmlInput: { min: 0, max: 6 } }}
+            />
+            <FormControlLabel
+              control={<Checkbox checked={mouse3dNeeded} onChange={(e) => setMouse3dNeeded(e.target.checked)} />}
+              label="3D mouse"
+            />
+          </Stack>
+          {peripheralChecks.length && availabilityQuery.data ? (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              {peripheralChecks.map((row) => (
+                <Chip
+                  key={row.label}
+                  size="small"
+                  color={row.free >= row.need ? 'success' : 'error'}
+                  label={`${row.label}: ${row.free} free in this window${row.free >= row.need ? '' : ' — shortage'}`}
+                />
+              ))}
+            </Stack>
           ) : null}
 
-          {!shiftId ? (
-            <Alert severity="info">Select a shift to see computers free for that shift.</Alert>
+          {!windowReady ? (
+            <Alert severity="info">Select a shift or enter a start and end time to see free computers.</Alert>
           ) : availabilityQuery.isLoading ? (
             <Typography variant="body2">Checking availability…</Typography>
           ) : availabilityQuery.isError ? (
             <Alert severity="error">{getErrorMessage(availabilityQuery.error)}</Alert>
-          ) : computers.length === 0 ? (
-            <Alert severity="warning">No computer of this type is free for the selected shift and date.</Alert>
           ) : (
+            <>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <Typography variant="body2" sx={{ flex: 1 }}>
+                  {freeComputers.length} of {allComputers.length} computer(s) free
+                  {availabilityQuery.data?.shifts[0] ? ` for ${availabilityQuery.data.shifts[0].shift_display}` : ''}.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch checked={showUnavailable} onChange={(e) => setShowUnavailable(e.target.checked)} />
+                  }
+                  label="Show unavailable with reasons"
+                />
+              </Stack>
+              {computers.length === 0 ? (
+                <Alert severity="warning">No computer of this type is free for the selected window and date.</Alert>
+              ) : null}
+            </>
+          )}
+          {windowReady && !availabilityQuery.isLoading && !availabilityQuery.isError && computers.length > 0 ? (
             <Box sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -172,6 +252,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
                     <TableCell>Type</TableCell>
                     <TableCell>Make / model</TableCell>
                     <TableCell>Current occupants</TableCell>
+                    <TableCell>Availability</TableCell>
                     <TableCell align="right" />
                   </TableRow>
                 </TableHead>
@@ -199,10 +280,28 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
                           'Unassigned'
                         )}
                       </TableCell>
+                      <TableCell>
+                        {slotOf(c)?.status === 'AVAILABLE' ? (
+                          <Chip size="small" color="success" label="Available" />
+                        ) : (
+                          <Box>
+                            <Chip
+                              size="small"
+                              color="error"
+                              label={String(slotOf(c)?.status ?? 'UNAVAILABLE').replace(/_/g, ' ')}
+                            />
+                            {slotOf(c)?.reason ? (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                {slotOf(c)?.reason}
+                              </Typography>
+                            ) : null}
+                          </Box>
+                        )}
+                      </TableCell>
                       <TableCell align="right">
                         <ProsohmButton
                           buttonVariant="primary"
-                          disabled={!resolvedUserId || assignMutation.isPending}
+                          disabled={!resolvedUserId || assignMutation.isPending || slotOf(c)?.status !== 'AVAILABLE'}
                           onClick={() => assignMutation.mutate(c.asset_id)}
                         >
                           Assign
@@ -213,7 +312,7 @@ export function FindAvailableComputerDialog({ open, onClose, defaults }: Props) 
                 </TableBody>
               </Table>
             </Box>
-          )}
+          ) : null}
         </Stack>
       </DialogContent>
       <DialogActions>

@@ -280,6 +280,12 @@ from app.db.phase104_onboarding_task_workflow_schema_sync import (
 from app.db.phase105_inventory_virtual_seat_schema_sync import (
     ensure_phase105_inventory_virtual_seat_foundation,
 )
+from app.db.phase107_ticket_workflow_schema_sync import (
+    ensure_phase107_ticket_workflow_foundation,
+)
+from app.db.phase106_shift_aware_allocation_schema_sync import (
+    ensure_phase106_shift_aware_allocation_foundation,
+)
 from app.db.project_classification_seed import ensure_project_small_task_types
 from app.db.schema_sync import (
     ensure_admin_schema,
@@ -354,6 +360,11 @@ async def lifespan(app: FastAPI):
             "phase105_inventory_virtual_seat",
             ensure_phase105_inventory_virtual_seat_foundation,
         ),
+        (
+            "phase106_shift_aware_allocation",
+            ensure_phase106_shift_aware_allocation_foundation,
+        ),
+        ("phase107_ticket_workflow", ensure_phase107_ticket_workflow_foundation),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),
         ("timesheet_approval_comments", ensure_timesheet_approval_comments),
@@ -592,6 +603,22 @@ async def lifespan(app: FastAPI):
         logger.exception("Quote invoicing / payment reminder step failed")
     finally:
         reminder_session.close()
+
+    sla_session = sessionmaker(bind=engine)()
+    try:
+        from app.services.ticket_workflow_service import (
+            ensure_default_sla_policies,
+            run_sla_sweep,
+        )
+
+        ensure_default_sla_policies(sla_session)
+        run_sla_sweep(sla_session)
+        sla_session.commit()
+    except Exception:
+        sla_session.rollback()
+        logger.exception("Ticket SLA sweep failed")
+    finally:
+        sla_session.close()
 
     yield
 

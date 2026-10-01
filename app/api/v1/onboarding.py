@@ -17,6 +17,10 @@ from app.core.permissions import get_role_name
 from app.models.models import OnboardingChecklist, OnboardingChecklistItem, User
 from app.schemas.onboarding import (
     OnboardingAttentionSummary,
+    OnboardingRepairResult,
+    OnboardingTemplateConfigRead,
+    OnboardingTemplateItemConfig,
+    OnboardingTemplateItemRead,
     OnboardingChecklistCreate,
     OnboardingChecklistDetailRead,
     OnboardingChecklistItemRead,
@@ -72,12 +76,51 @@ class _Viewer:
     def is_mine(self, item: OnboardingChecklistItem) -> bool:
         return item.owner_user_id == self.user.id or item.responsibility in self.owned
 
+    def can_approve(self, item: OnboardingChecklistItem) -> bool:
+        if self.can_manage:
+            return True
+        confirm_by = item.confirm_by or "owner"
+        if confirm_by == "manager":
+            return item.checklist is not None and item.checklist.reporting_manager_id == self.user.id
+        if confirm_by == "it":
+            return "it" in self.owned
+        if confirm_by == "hr":
+            return False
+        return self.is_mine(item)
+
+
+def _allowed_actions(item: OnboardingChecklistItem, viewer: _Viewer, can_edit: bool) -> list[str]:
+    """Actions the UI may offer; the service re-validates every one of them."""
+    if not can_edit:
+        return []
+    status_value = tasks.current_status(item)
+    kind = tasks.execution_type(item)
+    if tasks.is_resolved(status_value):
+        return ["reopen"] if (item.reversible or viewer.can_manage) else []
+    actions: list[str] = []
+    if status_value in {tasks.NOT_STARTED, tasks.READY, tasks.WAITING, tasks.BLOCKED}:
+        actions.append("start")
+    if kind != tasks.AUTOMATED or viewer.can_manage:
+        if kind != tasks.APPROVAL_REQUIRED or viewer.can_approve(item):
+            actions.append("complete")
+    if status_value != tasks.WAITING:
+        actions.append("waiting")
+    if status_value != tasks.BLOCKED:
+        actions.append("block")
+    if viewer.can_manage:
+        actions.extend(["waive", "not_required"])
+    if viewer.can_manage or not tasks.is_mandatory(item):
+        actions.append("cancel")
+    return actions
+
 
 def _item_read(item: OnboardingChecklistItem, viewer: _Viewer) -> OnboardingChecklistItemRead:
     ticket = item.help_ticket
     status_value = tasks.LEGACY_STATUS_MAP.get(item.status, item.status)
     can_edit = viewer.can_edit(item)
     resolved = tasks.is_resolved(status_value)
+    kind = tasks.execution_type(item)
+    broken = tasks.link_is_broken(item)
     return OnboardingChecklistItemRead(
         id=item.id,
         created_at=item.created_at,
@@ -117,10 +160,37 @@ def _item_read(item: OnboardingChecklistItem, viewer: _Viewer) -> OnboardingChec
         can_create_request=(
             can_edit
             and not resolved
+            and kind == tasks.TICKET_REQUIRED
             and tasks.request_category(item) is not None
             and not tasks.has_active_request(item)
         ),
         is_mine=viewer.is_mine(item),
+        execution_type=kind,
+        execution_type_label=tasks.EXECUTION_TYPE_LABELS.get(kind, kind),
+        mandatory=tasks.is_mandatory(item),
+        blocks_completion=tasks.blocks_completion(item),
+        evidence_required=bool(item.evidence_required) or kind == tasks.EXTERNAL_DEPENDENCY,
+        reversible=item.reversible if item.reversible is not None else True,
+        confirm_by=item.confirm_by,
+        confirm_by_label=tasks.CONFIRM_BY_LABELS.get(item.confirm_by or "", None),
+        can_approve=viewer.can_approve(item),
+        evidence_note=item.evidence_note,
+        request_status_label=(
+            tasks.T.STATUS_LABELS.get(ticket.status, ticket.status) if ticket is not None else None
+        ),
+        request_assignee_name=_full_name(ticket.assignee) if ticket is not None else None,
+        request_needs_owner=bool(
+            ticket is not None and ticket.assignee_id is None and ticket.status in tasks.TICKET_OPEN
+        ),
+        link_broken=broken,
+        allowed_actions=_allowed_actions(item, viewer, can_edit),
+        can_repair_link=can_edit
+        and not resolved
+        and (
+            broken
+            or tasks.is_legacy_grouped(item)
+            or (kind == tasks.TICKET_REQUIRED and item.help_ticket_id is None)
+        ),
     )
 
 
@@ -231,6 +301,15 @@ def _to_detail(
         triggered_tickets=_triggered_tickets(checklist, triggered),
         provisioned_temporary_password=provisioned_temporary_password,
     )
+
+
+@router.get("/capabilities")
+def onboarding_capabilities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    _require_hr_or_owner(db, current_user)
+    return {"can_configure_templates": onboard.can_manage_onboarding(db, current_user)}
 
 
 @router.get("/templates", response_model=list[OnboardingTemplateRead])
@@ -659,3 +738,168 @@ def item_history(
 ):
     _checklist, item = _load_item_for_view(db, current_user, checklist_id, item_id)
     return [OnboardingItemHistoryEvent(**row) for row in tasks.history_for_item(db, item)]
+
+
+@router.post(
+    "/{checklist_id}/items/{item_id}/repair-link",
+    response_model=OnboardingRepairResult,
+)
+def repair_item_link(
+    checklist_id: UUID,
+    item_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fix a broken / legacy-shared / missing ticket link (history is kept)."""
+    _checklist, item = _load_item_for_edit(db, current_user, checklist_id, item_id)
+    try:
+        result = tasks.repair_link(db, item=item, actor=current_user)
+    except ProTrackValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    db.commit()
+    loaded = onboard.load_checklist(db, checklist_id)
+    assert loaded is not None
+    return OnboardingRepairResult(
+        actions=list(result.get("actions") or []),
+        checklist=_to_detail(db, loaded, current_user),
+    )
+
+
+def _template_config(row) -> OnboardingTemplateConfigRead:
+    from app.services import ticketing_service as ticket_rules
+
+    items: list[OnboardingTemplateItemRead] = []
+    for s_index, section in enumerate(onboard.parse_structure(row.structure_json)):
+        for i_index, item_row in enumerate(section.get("items") or []):
+            config = onboard.item_config(item_row)
+            responsibility = str(item_row.get("responsibility") or "hr")
+            items.append(
+                OnboardingTemplateItemRead(
+                    section_index=s_index,
+                    item_index=i_index,
+                    section=str(section.get("section") or section.get("title") or ""),
+                    text=str(item_row.get("text") or ""),
+                    responsibility=responsibility,
+                    responsibility_label=onboard.RESPONSIBILITY_LABELS.get(responsibility, responsibility),
+                    execution_type=config["execution_type"],
+                    execution_type_label=tasks.EXECUTION_TYPE_LABELS[config["execution_type"]],
+                    owner_role=config.get("owner_role"),
+                    priority=ticket_rules.normalize_priority(config["priority"]) if config.get("priority") else None,
+                    due_offset_days=config.get("due_offset_days"),
+                    evidence_required=bool(config.get("evidence_required")),
+                    confirm_by=config.get("confirm_by") or "owner",
+                    reversible=bool(config.get("reversible", True)),
+                    mandatory=bool(config.get("mandatory", True)),
+                    blocks_completion=bool(config.get("blocks_completion", True)),
+                    ticket_category=config.get("ticket_category"),
+                    ticket_subcategory=config.get("ticket_subcategory"),
+                    completion_rule=config.get("completion_rule") or "resolved",
+                    validation=item_row.get("validation"),
+                )
+            )
+    return OnboardingTemplateConfigRead(
+        id=row.id,
+        code=row.code,
+        name=row.name,
+        version=row.version,
+        items=items,
+        execution_types=dict(tasks.EXECUTION_TYPE_LABELS),
+        confirm_by=dict(tasks.CONFIRM_BY_LABELS),
+        completion_rules=dict(tasks.COMPLETION_RULES),
+        ticket_subcategories=ticket_rules.SUBCATEGORY_LABELS,
+        responsibilities=dict(onboard.RESPONSIBILITY_LABELS),
+    )
+
+
+def _load_template_or_404(db: Session, template_id: UUID):
+    from app.models.models import OnboardingChecklistTemplate
+
+    row = db.get(OnboardingChecklistTemplate, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Template not found.")
+    return row
+
+
+@router.get("/templates/{template_id}/config", response_model=OnboardingTemplateConfigRead)
+def get_template_config(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Execution settings per template task (HR / Admin)."""
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Only HR / Admin can configure templates.")
+    return _template_config(_load_template_or_404(db, template_id))
+
+
+@router.put(
+    "/templates/{template_id}/items/{section_index}/{item_index}",
+    response_model=OnboardingTemplateConfigRead,
+)
+def update_template_item(
+    template_id: UUID,
+    section_index: int,
+    item_index: int,
+    payload: OnboardingTemplateItemConfig,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Change one task's execution settings. Applies to checklists created
+    afterwards; existing checklist tasks keep the settings they started with."""
+    import json
+
+    from app.models.enums import ActivityAction, EntityType
+    from app.services import ticketing_service as ticket_rules
+    from app.services.activity_service import log_activity
+
+    if not onboard.can_manage_onboarding(db, current_user):
+        raise HTTPException(status_code=403, detail="Only HR / Admin can configure templates.")
+    row = _load_template_or_404(db, template_id)
+    structure = onboard.parse_structure(row.structure_json)
+    try:
+        item_row = structure[section_index]["items"][item_index]
+    except (IndexError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=404, detail="Template task not found.") from exc
+    data = payload.model_dump()
+    kind = data["execution_type"]
+    if kind == tasks.TICKET_REQUIRED:
+        category = data["ticket_category"] or tasks.RESPONSIBILITY_TICKET_CATEGORY.get(data["responsibility"])
+        if category is None:
+            raise HTTPException(
+                status_code=422,
+                detail="A ticket-required task needs a ticket category (manager tasks have no queue).",
+            )
+        subcategory = data["ticket_subcategory"]
+        if subcategory and subcategory not in ticket_rules.SUBCATEGORY_LABELS.get(category, {}):
+            raise HTTPException(status_code=422, detail="Unknown ticket subcategory for that category.")
+    if kind == tasks.AUTOMATED and not item_row.get("validation"):
+        raise HTTPException(
+            status_code=422,
+            detail="Only tasks with a system check can be automated.",
+        )
+    if kind == tasks.OPTIONAL:
+        data["mandatory"] = False
+        data["blocks_completion"] = False
+    if data["blocks_completion"] and not data["mandatory"]:
+        raise HTTPException(status_code=422, detail="An optional task cannot block completion.")
+    old = {key: item_row.get(key) for key in data}
+    item_row.update(data)
+    item_row["requires_request"] = kind == tasks.TICKET_REQUIRED
+    row.structure_json = json.dumps(structure)
+    db.flush()
+    log_activity(
+        db,
+        user=current_user,
+        entity_type=EntityType.onboarding_template,
+        entity_id=row.id,
+        action=ActivityAction.onboarding_template_updated,
+        old_value=old,
+        new_value={"task": item_row.get("text"), **data},
+        outcome="success",
+        module="human_resources",
+        commit=False,
+    )
+    db.commit()
+    db.refresh(row)
+    return _template_config(row)

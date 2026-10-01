@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ProTrackValidationError
 from app.services import it_availability_service as availability
 from app.services import it_stock_service as stock
+from app.services import resource_allocation_engine as allocation
 from app.services import virtual_seat_service as seats
 
 Column = tuple[str, str]
@@ -178,6 +179,216 @@ def _upcoming_demand(db: Session, _params: dict[str, Any]) -> tuple[list[Column]
     return columns, rows
 
 
+def _pools(db: Session) -> list[Any]:
+    from sqlalchemy import select
+
+    from app.models.it_operations import SoftwareLicensePool
+
+    return [
+        p for p in db.scalars(select(SoftwareLicensePool)).all()
+        if (getattr(p, "status", None) or "active") == "active"
+    ]
+
+
+def _pool_label(db: Session, pool: Any, cache: dict) -> str:
+    from app.models.it_operations import SoftwareCatalog
+
+    if pool.software_id not in cache:
+        soft = db.get(SoftwareCatalog, pool.software_id)
+        cache[pool.software_id] = soft.name if soft else "Software"
+    code = pool.entitlement_code
+    return f"{cache[pool.software_id]} ({code})" if code else cache[pool.software_id]
+
+
+def _license_allocation(db: Session, params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    names: dict = {}
+    rows = []
+    for pool in _pools(db):
+        s = allocation.license_summary(db, pool, on_date=params.get("date_to"))
+        rows.append({
+            "id": str(pool.id),
+            "license": _pool_label(db, pool, names),
+            "metric": s["metric_label"],
+            "rights_owned": s["rights_owned"],
+            "authorized_users": s["authorized_users"],
+            "rights_allocated": s["rights_allocated"],
+            "active_usage": s["active_usage"],
+            "available_rights": "Unlimited" if s["available_rights"] is None else s["available_rights"],
+            "compliance_status": s["compliance_status"],
+            "compliance_reason": s["compliance_reason"],
+            "expiry_date": pool.expiry_date.isoformat() if pool.expiry_date else None,
+        })
+    columns: list[Column] = [
+        ("license", "License"),
+        ("metric", "Metric"),
+        ("rights_owned", "Rights owned"),
+        ("authorized_users", "Authorized users"),
+        ("rights_allocated", "Allocated / scheduled peak"),
+        ("active_usage", "Active usage"),
+        ("available_rights", "Available"),
+        ("compliance_status", "Compliance"),
+        ("compliance_reason", "Detail"),
+        ("expiry_date", "Expiry"),
+    ]
+    return columns, rows
+
+
+def _license_schedule(db: Session, params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    names: dict = {}
+    rows = []
+    for pool in _pools(db):
+        sched = allocation.license_schedule(db, pool, on_date=params.get("date_to"))
+        label = _pool_label(db, pool, names)
+        metric = sched["summary"]["metric_label"]
+        for entry in sched["scheduled"]:
+            rows.append({"id": f"{pool.id}:{entry['id']}", "license": label, "metric": metric,
+                         "user_name": entry.get("user_name"), "kind": entry["kind"],
+                         "window": entry.get("window"), "dates": entry.get("dates")})
+        for entry in sched["authorized_only"]:
+            rows.append({"id": f"{pool.id}:{entry['id']}", "license": label, "metric": metric,
+                         "user_name": entry.get("user_name"), "kind": "authorization",
+                         "window": entry.get("window"), "dates": entry.get("dates")})
+    columns: list[Column] = [
+        ("license", "License"),
+        ("metric", "Metric"),
+        ("user_name", "Employee"),
+        ("kind", "Type"),
+        ("window", "Window"),
+        ("dates", "Dates"),
+    ]
+    return columns, rows
+
+
+def _license_conflicts(db: Session, params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    from sqlalchemy import select
+
+    from app.models.it_operations import SoftwareAssignment
+
+    names: dict = {}
+    rows = []
+    for pool in _pools(db):
+        s = allocation.license_summary(db, pool, on_date=params.get("date_to"))
+        if s["compliance_status"] in {"OVER_ALLOCATED", "EXPIRED"} or s["metric"] == allocation.METRIC_UNSPECIFIED:
+            rows.append({"id": f"pool:{pool.id}", "license": _pool_label(db, pool, names),
+                         "issue": s["compliance_status"] if s["metric"] != allocation.METRIC_UNSPECIFIED
+                         else "METRIC NOT CONFIGURED",
+                         "detail": s["compliance_reason"] if s["metric"] != allocation.METRIC_UNSPECIFIED
+                         else s["metric_rule"],
+                         "user_name": None, "override_reason": None})
+    overridden = db.scalars(
+        select(SoftwareAssignment).where(
+            SoftwareAssignment.released_date.is_(None), SoftwareAssignment.override_reason.is_not(None)
+        )
+    ).all()
+    user_names = allocation._names(db, [r.user_id for r in overridden])
+    for r in overridden:
+        pool = next((p for p in _pools(db) if p.id == r.license_pool_id), None)
+        rows.append({"id": f"sw:{r.id}", "license": _pool_label(db, pool, names) if pool else None,
+                     "issue": "OVERRIDDEN CONFLICT", "detail": "Assigned despite a conflict.",
+                     "user_name": user_names.get(r.user_id), "override_reason": r.override_reason})
+    columns: list[Column] = [
+        ("license", "License"),
+        ("issue", "Issue"),
+        ("detail", "Detail"),
+        ("user_name", "Employee"),
+        ("override_reason", "Override reason"),
+    ]
+    return columns, rows
+
+
+def _utilization_by_shift(db: Session, params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    data = availability.computer_availability(db, on_date=params.get("date_to"))
+    rows = []
+    for shift in data["shifts"]:
+        code = shift["shift_code"]
+        slots = [slot for row in data["computers"] for slot in row["shifts"] if slot["shift_code"] == code]
+        usable = [s for s in slots if s["status"] != "UNAVAILABLE"]
+        free = sum(1 for s in usable if s["status"] == "AVAILABLE")
+        occupied = len(usable) - free
+        rows.append({
+            "id": code,
+            "shift": shift["shift_display"],
+            "computers": len(slots),
+            "usable": len(usable),
+            "occupied": occupied,
+            "free": free,
+            "utilization": f"{round(occupied * 100 / len(usable))}%" if usable else "—",
+        })
+    columns: list[Column] = [
+        ("shift", "Shift"),
+        ("computers", "Computers"),
+        ("usable", "Usable (lifecycle OK)"),
+        ("occupied", "Occupied / conflicting"),
+        ("free", "Free"),
+        ("utilization", "Utilization"),
+    ]
+    return columns, rows
+
+
+def _legacy_assignments(db: Session, _params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    from app.services import resource_assignment_service as assignments
+
+    review = assignments.legacy_review(db)
+    rows = [{"id": r["assignment_id"], **r} for r in review["assignments"]]
+    columns: list[Column] = [
+        ("asset_number", "Asset #"),
+        ("role_label", "Component"),
+        ("user_name", "Employee"),
+        ("assigned_date", "Assigned"),
+        ("status", "Status"),
+        ("reason", "Reason"),
+    ]
+    return columns, rows
+
+
+def _assignment_history(db: Session, params: dict[str, Any]) -> tuple[list[Column], list[dict]]:
+    from sqlalchemy import select
+
+    from app.models.it_operations import Asset, AssetAssignment
+
+    stmt = select(AssetAssignment).order_by(AssetAssignment.assigned_date.desc()).limit(5000)
+    if params.get("date_from"):
+        stmt = stmt.where(AssetAssignment.assigned_date >= params["date_from"])
+    if params.get("date_to"):
+        stmt = stmt.where(AssetAssignment.assigned_date <= params["date_to"])
+    records = db.scalars(stmt).all()
+    shift_map = allocation._shift_map(db, records)
+    user_names = allocation._names(
+        db, [r.assigned_to_user_id for r in records] + [r.released_by_user_id for r in records]
+    )
+    assets = {a.id: a for a in db.scalars(select(Asset).where(Asset.id.in_({r.asset_id for r in records}))).all()} \
+        if records else {}
+    rows = []
+    for r in records:
+        window = allocation.window_for_row(r, shift_map)
+        rows.append({
+            "id": str(r.id),
+            "asset_number": assets[r.asset_id].asset_number if r.asset_id in assets else None,
+            "user_name": user_names.get(r.assigned_to_user_id),
+            "assignment_type": r.assignment_type,
+            "window": "Legacy / needs review" if window.legacy else window.label,
+            "assigned_date": r.assigned_date.isoformat() if r.assigned_date else None,
+            "planned_end_date": r.planned_end_date.isoformat() if r.planned_end_date else None,
+            "returned_date": r.returned_date.isoformat() if r.returned_date else None,
+            "released_by": user_names.get(r.released_by_user_id) if r.released_by_user_id else None,
+            "purpose": r.purpose,
+            "override_reason": r.override_reason,
+        })
+    columns: list[Column] = [
+        ("asset_number", "Asset #"),
+        ("user_name", "Employee"),
+        ("assignment_type", "Type"),
+        ("window", "Window"),
+        ("assigned_date", "From"),
+        ("planned_end_date", "Planned end"),
+        ("returned_date", "Released"),
+        ("released_by", "Released by"),
+        ("purpose", "Purpose"),
+        ("override_reason", "Override reason"),
+    ]
+    return columns, rows
+
+
 REPORTS: dict[str, tuple[str, Callable[[Session, dict[str, Any]], tuple[list[Column], list[dict]]]]] = {
     "consumable_stock": ("Consumable stock", _consumable_stock),
     "low_stock": ("Low stock", _low_stock),
@@ -187,6 +398,12 @@ REPORTS: dict[str, tuple[str, Callable[[Session, dict[str, Any]], tuple[list[Col
     "available_workstations": ("Available workstations", _available_workstations),
     "shared_workstations": ("Shared workstations", _shared_workstations),
     "upcoming_demand": ("Upcoming onboarding demand", _upcoming_demand),
+    "computer_utilization_by_shift": ("Computer utilization by shift", _utilization_by_shift),
+    "license_allocation": ("License allocation & compliance", _license_allocation),
+    "license_schedule": ("License schedule (shift usage)", _license_schedule),
+    "license_conflicts": ("License conflicts & overrides", _license_conflicts),
+    "legacy_assignments": ("Legacy assignments needing review", _legacy_assignments),
+    "assignment_history": ("Asset assignment history", _assignment_history),
 }
 
 

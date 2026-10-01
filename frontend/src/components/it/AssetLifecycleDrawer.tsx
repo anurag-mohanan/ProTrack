@@ -9,8 +9,11 @@ import {
   Stack,
   Tab,
   Tabs,
+  TextField,
   Typography,
 } from '@mui/material';
+import { fetchAssetSchedule, itAllocationKeys } from '../../api/itAllocation';
+import { ScheduleTimeline } from './allocation/ScheduleTimeline';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAssetAssignments,
@@ -31,11 +34,18 @@ type Props = {
   onClose: () => void;
 };
 
-type TabKey = 'overview' | 'assignment' | 'history';
+type TabKey = 'overview' | 'assignment' | 'schedule' | 'history';
 
 export function AssetLifecycleDrawer({ asset, onClose }: Props) {
   const [tab, setTab] = useState<TabKey>('overview');
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().slice(0, 10));
   const open = Boolean(asset);
+
+  const scheduleQuery = useQuery({
+    queryKey: itAllocationKeys.assetSchedule(asset?.id ?? '', scheduleDate),
+    queryFn: () => fetchAssetSchedule(asset!.id, scheduleDate || undefined),
+    enabled: open && Boolean(asset?.id) && tab === 'schedule',
+  });
 
   const assignmentsQuery = useQuery({
     queryKey: itOperationsKeys.assetAssignments(asset?.id ?? ''),
@@ -96,6 +106,7 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
         >
           <Tab value="overview" label="Overview" sx={{ minHeight: 40 }} />
           <Tab value="assignment" label="Assignment" sx={{ minHeight: 40 }} />
+          <Tab value="schedule" label="Schedule" sx={{ minHeight: 40 }} />
           <Tab value="history" label="History" sx={{ minHeight: 40 }} />
         </Tabs>
 
@@ -225,11 +236,29 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
                   <Box key={row.id} sx={{ mb: 1 }}>
                     <DetailRow label="User" value={row.assigned_to_user_name} />
                     <DetailRow
-                      label="Shift slot"
-                      value={row.shift_display || row.shift_name || 'Legacy (no shift)'}
+                      label="Assigned"
+                      value={
+                        row.needs_review
+                          ? 'LEGACY / NEEDS REVIEW'
+                          : row.window_label || row.shift_display || row.shift_name || 'All hours'
+                      }
                     />
-                    <DetailRow label="From" value={formatDate(row.assigned_date)} />
-                    <Chip size="small" color="success" label="Current" sx={{ mt: 0.5 }} />
+                    <DetailRow
+                      label="Dates"
+                      value={`${formatDate(row.assigned_date)} → ${
+                        row.planned_end_date ? formatDate(row.planned_end_date) : 'open'
+                      }`}
+                    />
+                    {row.purpose ? <DetailRow label="Purpose" value={row.purpose} /> : null}
+                    {row.override_reason ? (
+                      <DetailRow label="Override reason" value={row.override_reason} />
+                    ) : null}
+                    <Chip
+                      size="small"
+                      color={row.needs_review ? 'warning' : 'success'}
+                      label={row.needs_review ? 'Needs review' : 'Current'}
+                      sx={{ mt: 0.5 }}
+                    />
                   </Box>
                 ))}
               </Section>
@@ -239,9 +268,69 @@ export function AssetLifecycleDrawer({ asset, onClose }: Props) {
               </Typography>
             )}
             <Typography variant="body2" color="text.secondary">
-              Shared desks: assign a second user with a different shift_id. History is never
-              overwritten.
+              Shareable resources can hold several users as long as their shift or time windows do not
+              overlap. See the Schedule tab for free gaps. History is never overwritten.
             </Typography>
+          </Stack>
+        ) : null}
+
+        {tab === 'schedule' && asset ? (
+          <Stack spacing={2}>
+            <TextField
+              type="date"
+              size="small"
+              label="Date"
+              value={scheduleDate}
+              onChange={(e) => setScheduleDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ maxWidth: 200 }}
+            />
+            {scheduleQuery.isLoading ? (
+              <LoadingState message="Loading schedule…" />
+            ) : scheduleQuery.isError ? (
+              <Typography color="error">Could not load the schedule for this asset.</Typography>
+            ) : scheduleQuery.data ? (
+              <>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Chip
+                    size="small"
+                    label={scheduleQuery.data.policy.shareable ? 'Shareable across shifts' : 'Exclusive (one user)'}
+                    color={scheduleQuery.data.policy.shareable ? 'info' : 'default'}
+                  />
+                  {scheduleQuery.data.policy.requires_shift ? (
+                    <Chip size="small" variant="outlined" label="Shift required" />
+                  ) : null}
+                  <Chip
+                    size="small"
+                    color={scheduleQuery.data.lifecycle_ok ? 'success' : 'error'}
+                    label={`Lifecycle: ${scheduleQuery.data.lifecycle_status.replace(/_/g, ' ')}`}
+                  />
+                </Stack>
+                {!scheduleQuery.data.lifecycle_ok && scheduleQuery.data.lifecycle_reason ? (
+                  <Typography variant="body2" color="error">
+                    {scheduleQuery.data.lifecycle_reason}
+                  </Typography>
+                ) : null}
+                <Section title="Occupancy (24 h)">
+                  <ScheduleTimeline blocks={scheduleQuery.data.blocks} />
+                </Section>
+                <Section title="Assignments & reservations on this date">
+                  {scheduleQuery.data.assignments.length === 0 ? (
+                    <Typography color="text.secondary">Free for the whole day.</Typography>
+                  ) : (
+                    scheduleQuery.data.assignments.map((row) => (
+                      <DetailRow
+                        key={row.id}
+                        label={row.user_name || (row.kind === 'reservation' ? 'Reserved' : 'Assigned')}
+                        value={`${row.kind === 'reservation' ? 'Reservation · ' : ''}${row.window}${
+                          row.legacy ? ' · LEGACY / NEEDS REVIEW' : ''
+                        } · ${row.dates}`}
+                      />
+                    ))
+                  )}
+                </Section>
+              </>
+            ) : null}
           </Stack>
         ) : null}
 

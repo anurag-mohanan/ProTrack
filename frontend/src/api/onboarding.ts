@@ -2,23 +2,49 @@ import { apiClient } from './client';
 
 export type OnboardingItemStatus =
   | 'not_started'
+  | 'ready'
   | 'in_progress'
+  | 'waiting'
   | 'blocked'
   | 'completed'
   | 'not_required'
-  | 'waived';
+  | 'waived'
+  | 'cancelled';
+
+export type OnboardingExecutionType =
+  | 'CHECKLIST_ONLY'
+  | 'TICKET_REQUIRED'
+  | 'APPROVAL_REQUIRED'
+  | 'EXTERNAL_DEPENDENCY'
+  | 'OPTIONAL'
+  | 'AUTOMATED';
+
+export type OnboardingTaskActionCode =
+  | 'start'
+  | 'complete'
+  | 'waiting'
+  | 'block'
+  | 'waive'
+  | 'not_required'
+  | 'cancel'
+  | 'reopen';
 export type OnboardingChecklistStatus = 'in_progress' | 'completed' | 'cancelled';
 
 export const RESOLVED_ITEM_STATUSES: ReadonlySet<OnboardingItemStatus> = new Set([
   'completed',
   'not_required',
   'waived',
+  'cancelled',
 ]);
 
 export type OnboardingAttentionCode =
   | 'request_missing'
   | 'request_resolved'
   | 'request_cancelled'
+  | 'request_needs_owner'
+  | 'request_waiting'
+  | 'link_broken'
+  | 'legacy_grouped'
   | 'blocked'
   | 'overdue'
   | 'unassigned';
@@ -44,7 +70,14 @@ export interface OnboardingChecklistItem {
   completed_by_name: string | null;
   completion_date: string | null;
   completed_at: string | null;
-  completion_type: 'manual' | 'request' | 'manual_override' | null;
+  completion_type:
+    | 'manual'
+    | 'request'
+    | 'manual_override'
+    | 'evidence'
+    | 'automated'
+    | 'approved'
+    | null;
   notes: string | null;
   due_date: string | null;
   is_overdue: boolean;
@@ -57,8 +90,71 @@ export interface OnboardingChecklistItem {
   can_waive: boolean;
   can_create_request: boolean;
   is_mine: boolean;
+  execution_type: OnboardingExecutionType;
+  execution_type_label: string;
+  mandatory: boolean;
+  blocks_completion: boolean;
+  evidence_required: boolean;
+  reversible: boolean;
+  confirm_by: string | null;
+  confirm_by_label: string | null;
+  can_approve: boolean;
+  evidence_note: string | null;
+  request_status_label: string | null;
+  request_assignee_name: string | null;
+  request_needs_owner: boolean;
+  link_broken: boolean;
+  allowed_actions: OnboardingTaskActionCode[];
+  can_repair_link: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface OnboardingTemplateItemConfig {
+  execution_type: OnboardingExecutionType;
+  responsibility: string;
+  owner_role: string | null;
+  priority: 'low' | 'normal' | 'high' | 'urgent' | null;
+  due_offset_days: number | null;
+  evidence_required: boolean;
+  confirm_by: string;
+  reversible: boolean;
+  mandatory: boolean;
+  blocks_completion: boolean;
+  ticket_category: string | null;
+  ticket_subcategory: string | null;
+  completion_rule: 'resolved' | 'closed';
+}
+
+export interface OnboardingTemplateItem extends OnboardingTemplateItemConfig {
+  section_index: number;
+  item_index: number;
+  section: string;
+  text: string;
+  responsibility_label: string;
+  execution_type_label: string;
+  validation: string | null;
+}
+
+export interface OnboardingTemplateConfig {
+  id: string;
+  code: string;
+  name: string;
+  version: number;
+  items: OnboardingTemplateItem[];
+  execution_types: Record<string, string>;
+  confirm_by: Record<string, string>;
+  completion_rules: Record<string, string>;
+  ticket_subcategories: Record<string, Record<string, string>>;
+  responsibilities: Record<string, string>;
+}
+
+export interface OnboardingTemplateSummary {
+  id: string;
+  code: string;
+  name: string;
+  version: number;
+  is_active: boolean;
 }
 
 export interface OnboardingItemHistoryEvent {
@@ -252,7 +348,7 @@ export const onboardingApi = {
   createItemRequest: async (
     checklistId: string,
     itemId: string,
-    payload: { priority?: 'low' | 'medium' | 'high' | 'urgent'; details?: string | null },
+    payload: { priority?: 'low' | 'normal' | 'high' | 'urgent'; details?: string | null },
   ): Promise<OnboardingChecklistDetail> => {
     const { data } = await apiClient.post<OnboardingChecklistDetail>(
       `/hr/onboarding/${checklistId}/items/${itemId}/request`,
@@ -274,6 +370,41 @@ export const onboardingApi = {
   itemHistory: async (checklistId: string, itemId: string): Promise<OnboardingItemHistoryEvent[]> => {
     const { data } = await apiClient.get<OnboardingItemHistoryEvent[]>(
       `/hr/onboarding/${checklistId}/items/${itemId}/history`,
+    );
+    return data;
+  },
+  repairLink: async (
+    checklistId: string,
+    itemId: string,
+  ): Promise<{ actions: string[]; checklist: OnboardingChecklistDetail }> => {
+    const { data } = await apiClient.post<{ actions: string[]; checklist: OnboardingChecklistDetail }>(
+      `/hr/onboarding/${checklistId}/items/${itemId}/repair-link`,
+    );
+    return data;
+  },
+  capabilities: async (): Promise<{ can_configure_templates: boolean }> => {
+    const { data } = await apiClient.get<{ can_configure_templates: boolean }>('/hr/onboarding/capabilities');
+    return data;
+  },
+  templates: async (): Promise<OnboardingTemplateSummary[]> => {
+    const { data } = await apiClient.get<OnboardingTemplateSummary[]>('/hr/onboarding/templates');
+    return data;
+  },
+  templateConfig: async (templateId: string): Promise<OnboardingTemplateConfig> => {
+    const { data } = await apiClient.get<OnboardingTemplateConfig>(
+      `/hr/onboarding/templates/${templateId}/config`,
+    );
+    return data;
+  },
+  updateTemplateItem: async (
+    templateId: string,
+    sectionIndex: number,
+    itemIndex: number,
+    payload: OnboardingTemplateItemConfig,
+  ): Promise<OnboardingTemplateConfig> => {
+    const { data } = await apiClient.put<OnboardingTemplateConfig>(
+      `/hr/onboarding/templates/${templateId}/items/${sectionIndex}/${itemIndex}`,
+      payload,
     );
     return data;
   },

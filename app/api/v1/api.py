@@ -16,6 +16,7 @@ from app.api.v1 import (
     history_imports,
     hr,
     imports,
+    it_allocation,
     it_inventory,
     it_operations,
     it_provisioning,
@@ -180,4 +181,5 @@ api_router.include_router(it_provisioning.router)
 api_router.include_router(it_provisioning.users_360_router)
 api_router.include_router(workstation_packages.router)
 api_router.include_router(it_inventory.router)
+api_router.include_router(it_allocation.router)
 api_router.include_router(resource_shifts.router)

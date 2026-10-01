@@ -25,6 +25,7 @@ import BlockRoundedIcon from '@mui/icons-material/BlockRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import DoNotDisturbOnOutlinedIcon from '@mui/icons-material/DoNotDisturbOnOutlined';
+import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
 import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
 import PendingOutlinedIcon from '@mui/icons-material/PendingOutlined';
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
@@ -36,30 +37,30 @@ import {
   onboardingApi,
   type OnboardingChecklistItem,
   type OnboardingItemStatus,
+  type OnboardingTaskActionCode,
 } from '../../api/onboarding';
 import {
+  ACTION_CODE_LABELS,
+  ACTION_FOR_CODE,
   ATTENTION_LABELS,
   actionableAttention,
+  completionNeedsOverride,
   isResolved,
   requestHref,
   type TaskAction,
   type TaskActionSubmit,
 } from './onboardingTaskUtils';
 
-const REQUEST_STATUS_LABELS: Record<string, string> = {
-  open: 'Open',
-  in_progress: 'In progress',
-  on_hold: 'On hold',
-  resolved: 'Resolved',
-  closed: 'Closed',
-  cancelled: 'Cancelled',
-};
-
 const COMPLETION_TYPE_LABELS: Record<string, string> = {
   manual: 'Completed directly',
-  request: 'Completed via linked request',
+  request: 'Completed via linked ticket',
   manual_override: 'Completed with override',
+  evidence: 'Completed with evidence',
+  automated: 'Completed automatically',
+  approved: 'Approved',
 };
+
+const CHIP_SX = { height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.68rem' } };
 
 function statusColor(status: OnboardingItemStatus) {
   switch (status) {
@@ -68,9 +69,11 @@ function statusColor(status: OnboardingItemStatus) {
     case 'blocked':
       return 'error' as const;
     case 'in_progress':
+    case 'ready':
       return 'info' as const;
     case 'not_required':
     case 'waived':
+    case 'cancelled':
       return 'default' as const;
     default:
       return 'warning' as const;
@@ -81,8 +84,9 @@ function StatusIcon({ status }: { status: OnboardingItemStatus }) {
   const sx = { fontSize: 16 };
   if (status === 'completed') return <CheckCircleRoundedIcon sx={{ ...sx, color: 'success.main' }} />;
   if (status === 'blocked') return <BlockRoundedIcon sx={{ ...sx, color: 'error.main' }} />;
+  if (status === 'waiting') return <HourglassEmptyRoundedIcon sx={{ ...sx, color: 'warning.main' }} />;
   if (status === 'in_progress') return <PendingOutlinedIcon sx={{ ...sx, color: 'info.main' }} />;
-  if (status === 'not_required' || status === 'waived')
+  if (status === 'not_required' || status === 'waived' || status === 'cancelled')
     return <DoNotDisturbOnOutlinedIcon sx={{ ...sx, color: 'text.disabled' }} />;
   return <RadioButtonUncheckedRoundedIcon sx={{ ...sx, color: 'text.disabled' }} />;
 }
@@ -99,11 +103,25 @@ function formatDateTime(value: string | null) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
+function actionLabel(item: OnboardingChecklistItem, code: OnboardingTaskActionCode) {
+  if (code === 'complete' && item.execution_type === 'APPROVAL_REQUIRED') return 'Approve';
+  return ACTION_CODE_LABELS[code].replace('…', '');
+}
+
+function ticketOwnerText(item: OnboardingChecklistItem) {
+  if (item.request_needs_owner) return 'needs owner';
+  return item.request_assignee_name ?? '';
+}
+
 function RequestChip({ item }: { item: OnboardingChecklistItem }) {
+  if (item.link_broken) {
+    return <Chip size="small" variant="outlined" color="error" label="Ticket link broken" sx={CHIP_SX} />;
+  }
   if (!item.help_ticket_number) return null;
   const status = item.request_status ?? '';
   const color =
     status === 'cancelled' ? 'error' : status === 'resolved' || status === 'closed' ? 'success' : 'info';
+  const owner = ticketOwnerText(item);
   return (
     <Chip
       size="small"
@@ -112,8 +130,8 @@ function RequestChip({ item }: { item: OnboardingChecklistItem }) {
       component={RouterLink}
       to={requestHref(item)}
       clickable
-      label={`${item.help_ticket_number} · ${REQUEST_STATUS_LABELS[status] ?? status}`}
-      sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.68rem' } }}
+      label={`${item.help_ticket_number} · ${item.request_status_label ?? status}${owner ? ` · ${owner}` : ''}`}
+      sx={CHIP_SX}
     />
   );
 }
@@ -133,6 +151,15 @@ export function OnboardingTaskRow({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const resolved = isResolved(item.status);
   const attention = actionableAttention(item);
+  const actions = item.allowed_actions;
+  const primaryCode: OnboardingTaskActionCode | null = actions.includes('complete')
+    ? 'complete'
+    : actions.includes('reopen')
+      ? 'reopen'
+      : null;
+  const menuCodes = actions.filter((code) => code !== primaryCode);
+  const needsRepair = item.can_repair_link && (item.link_broken || item.attention.includes('legacy_grouped'));
+  const reasonShown = (item.status === 'blocked' || item.status === 'waiting') && item.status_reason;
   const openMenu = (event: MouseEvent<HTMLElement>) => setMenuAnchor(event.currentTarget);
   const closeMenu = () => setMenuAnchor(null);
   const pick = (action: TaskAction) => {
@@ -182,8 +209,11 @@ export function OnboardingTaskRow({
             label={item.status_label}
             color={statusColor(item.status)}
             variant={item.status === 'not_started' ? 'outlined' : 'filled'}
-            sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.68rem' } }}
+            sx={CHIP_SX}
           />
+          {item.execution_type !== 'CHECKLIST_ONLY' ? (
+            <Chip size="small" variant="outlined" label={item.execution_type_label} sx={CHIP_SX} />
+          ) : null}
           <Typography variant="caption" color="text.secondary">
             Owner: {item.responsibility_label}
             {item.owner_name ? ` · ${item.owner_name}` : ''}
@@ -199,9 +229,9 @@ export function OnboardingTaskRow({
             </Typography>
           ) : null}
           <RequestChip item={item} />
-          {!item.help_ticket_number && !resolved && item.request_category ? (
-            <Typography variant="caption" color="text.disabled">
-              No request
+          {!item.help_ticket_number && !item.link_broken && !resolved && item.execution_type === 'TICKET_REQUIRED' ? (
+            <Typography variant="caption" color="warning.dark">
+              No ticket yet
             </Typography>
           ) : null}
           {resolved && item.completed_by_name ? (
@@ -210,9 +240,9 @@ export function OnboardingTaskRow({
             </Typography>
           ) : null}
         </Stack>
-        {attention.length > 0 || (item.status === 'blocked' && item.status_reason) ? (
+        {attention.length > 0 || reasonShown ? (
           <Typography variant="caption" color="warning.dark" sx={{ display: 'block', mt: 0.25 }}>
-            {item.status === 'blocked' && item.status_reason
+            {reasonShown
               ? item.status_reason
               : attention
                   .filter((code) => code !== 'blocked')
@@ -231,69 +261,44 @@ export function OnboardingTaskRow({
           alignItems: 'center',
         }}
       >
-        {!resolved && item.can_edit ? (
-          <>
-            {item.can_create_request ? (
-              <ProsohmButton
-                size="small"
-                buttonVariant="secondary"
-                disabled={busy}
-                onClick={() => onAction({ kind: 'request' })}
-              >
-                {item.help_ticket_id ? 'New request' : 'Create request'}
-              </ProsohmButton>
-            ) : item.help_ticket_id ? (
-              <ProsohmButton
-                size="small"
-                buttonVariant="secondary"
-                onClick={() => navigate(requestHref(item))}
-              >
-                Open request
-              </ProsohmButton>
-            ) : null}
-            <ProsohmButton
-              size="small"
-              buttonVariant="primary"
-              disabled={busy}
-              onClick={() => onAction({ kind: 'complete' })}
-            >
-              Complete
-            </ProsohmButton>
-          </>
+        {needsRepair ? (
+          <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'repair' })}>
+            Repair link
+          </ProsohmButton>
+        ) : item.can_create_request ? (
+          <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'request' })}>
+            {item.help_ticket_id ? 'New ticket' : 'Create ticket'}
+          </ProsohmButton>
+        ) : item.help_ticket_id && !item.link_broken ? (
+          <ProsohmButton size="small" buttonVariant="secondary" onClick={() => navigate(requestHref(item))}>
+            Open ticket
+          </ProsohmButton>
+        ) : null}
+        {primaryCode ? (
+          <ProsohmButton
+            size="small"
+            buttonVariant={primaryCode === 'complete' ? 'primary' : 'secondary'}
+            disabled={busy}
+            onClick={() => onAction(ACTION_FOR_CODE[primaryCode])}
+          >
+            {actionLabel(item, primaryCode)}
+          </ProsohmButton>
         ) : (
           <ProsohmButton size="small" buttonVariant="secondary" onClick={onOpen}>
             Details
           </ProsohmButton>
         )}
-        {item.can_edit ? (
+        {menuCodes.length > 0 ? (
           <>
             <IconButton size="small" aria-label="More task actions" onClick={openMenu} disabled={busy}>
               <MoreVertRoundedIcon fontSize="small" />
             </IconButton>
             <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
-              {resolved ? (
-                <MenuItem onClick={() => pick({ kind: 'status', status: 'not_started' })}>
-                  Reopen task
+              {menuCodes.map((code) => (
+                <MenuItem key={code} onClick={() => pick(ACTION_FOR_CODE[code])}>
+                  {ACTION_CODE_LABELS[code]}
                 </MenuItem>
-              ) : null}
-              {!resolved && item.status !== 'in_progress' ? (
-                <MenuItem onClick={() => pick({ kind: 'status', status: 'in_progress' })}>
-                  {item.status === 'blocked' ? 'Unblock (in progress)' : 'Mark in progress'}
-                </MenuItem>
-              ) : null}
-              {!resolved && item.status !== 'blocked' ? (
-                <MenuItem onClick={() => pick({ kind: 'status', status: 'blocked' })}>
-                  Mark blocked…
-                </MenuItem>
-              ) : null}
-              {!resolved ? (
-                <MenuItem onClick={() => pick({ kind: 'status', status: 'not_required' })}>
-                  Mark not required…
-                </MenuItem>
-              ) : null}
-              {!resolved && item.can_waive ? (
-                <MenuItem onClick={() => pick({ kind: 'status', status: 'waived' })}>Waive…</MenuItem>
-              ) : null}
+              ))}
               <Divider />
               <MenuItem
                 onClick={() => {
@@ -313,13 +318,24 @@ export function OnboardingTaskRow({
 
 const ACTION_COPY: Record<string, { title: string; confirm: string; reasonLabel?: string; reasonRequired?: boolean }> = {
   complete: { title: 'Complete task', confirm: 'Mark complete' },
-  request: { title: 'Create request', confirm: 'Create request' },
-  in_progress: { title: 'Mark in progress', confirm: 'Mark in progress' },
+  request: { title: 'Create ticket', confirm: 'Create ticket' },
+  repair: { title: 'Repair ticket link', confirm: 'Repair' },
+  in_progress: { title: 'Start task', confirm: 'Start' },
   not_started: { title: 'Reopen task', confirm: 'Reopen' },
+  waiting: { title: 'Mark waiting', confirm: 'Mark waiting', reasonLabel: 'What is the task waiting for?', reasonRequired: true },
   blocked: { title: 'Mark blocked', confirm: 'Mark blocked', reasonLabel: 'Blocked reason', reasonRequired: true },
   not_required: { title: 'Mark not required', confirm: 'Mark not required', reasonLabel: 'Why does this not apply? (optional)' },
   waived: { title: 'Waive task', confirm: 'Waive', reasonLabel: 'Waiver reason', reasonRequired: true },
+  cancelled: { title: 'Cancel task', confirm: 'Cancel task', reasonLabel: 'Cancellation reason', reasonRequired: true },
 };
+
+function overrideHint(item: OnboardingChecklistItem) {
+  if (item.execution_type === 'AUTOMATED')
+    return 'This task is completed by a system check. Completing it by hand needs an override reason.';
+  if (item.execution_type === 'TICKET_REQUIRED')
+    return 'This task completes when its ticket is resolved. To complete it now, use an override and give a reason.';
+  return 'The system check for this task has not passed. Record evidence or use an override.';
+}
 
 export function TaskActionDialog({
   item,
@@ -338,18 +354,18 @@ export function TaskActionDialog({
 }) {
   const open = Boolean(item && action);
   const key = action ? (action.kind === 'status' ? action.status : action.kind) : 'complete';
-  const copy = ACTION_COPY[key];
+  const copy = ACTION_COPY[key] ?? ACTION_COPY.complete;
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [override, setOverride] = useState(false);
-  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal');
   const [details, setDetails] = useState('');
 
   const reset = () => {
     setReason('');
     setNotes('');
     setOverride(false);
-    setPriority('medium');
+    setPriority('normal');
     setDetails('');
   };
 
@@ -362,19 +378,27 @@ export function TaskActionDialog({
 
   const isComplete = action.kind === 'complete';
   const isRequest = action.kind === 'request';
+  const isRepair = action.kind === 'repair';
+  const offerOverride =
+    isComplete &&
+    (item.execution_type === 'TICKET_REQUIRED' || item.execution_type === 'AUTOMATED' || Boolean(item.validation_rule));
   const needsReason = Boolean(copy.reasonRequired) || (isComplete && override);
-  const canSubmit = !busy && (!needsReason || reason.trim().length > 0);
+  const evidenceRequired = isComplete && item.evidence_required && !override;
+  const canSubmit =
+    !busy && (!needsReason || reason.trim().length > 0) && (!evidenceRequired || notes.trim().length > 0);
+  const title = isComplete && item.execution_type === 'APPROVAL_REQUIRED' ? 'Approve task' : copy.title;
 
   return (
     <Dialog open={open} onClose={close} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ pb: 0.5 }}>{copy.title}</DialogTitle>
+      <DialogTitle sx={{ pb: 0.5 }}>{title}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {item.item_text}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
           Owner: {item.responsibility_label}
-          {item.help_ticket_number ? ` · Linked request ${item.help_ticket_number}` : ''}
+          {item.execution_type !== 'CHECKLIST_ONLY' ? ` · ${item.execution_type_label}` : ''}
+          {item.help_ticket_number ? ` · Ticket ${item.help_ticket_number}` : ''}
         </Typography>
         <Stack spacing={1.5}>
           {isRequest ? (
@@ -387,37 +411,46 @@ export function TaskActionDialog({
                 onChange={(event) => setPriority(event.target.value as typeof priority)}
               >
                 <MenuItem value="low">Low</MenuItem>
-                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="normal">Normal</MenuItem>
                 <MenuItem value="high">High</MenuItem>
                 <MenuItem value="urgent">Urgent</MenuItem>
               </TextField>
               <TextField
                 size="small"
-                label="Details for the request (hardware, software, licence…)"
+                label="Details for the ticket (hardware, software, licence…)"
                 multiline
                 minRows={3}
                 value={details}
                 onChange={(event) => setDetails(event.target.value)}
               />
               <Typography variant="caption" color="text.secondary">
-                The request is raised in the Help Desk with the employee, department, joining date and
-                due date, and linked to this task. The task moves to In progress and completes
-                automatically when the request is resolved.
+                One ticket is raised for this task with the employee, department, joining date and due
+                date, and routed to the configured owner. The task then follows the ticket: waiting
+                while the ticket waits, completed when it is resolved.
               </Typography>
             </>
           ) : null}
+          {isRepair ? (
+            <Typography variant="body2" color="text.secondary">
+              {item.link_broken
+                ? 'The linked ticket no longer exists. The dangling link is cleared (kept in history) and a ticket is raised for this task.'
+                : 'This task shares a legacy ticket with other tasks. A dedicated ticket is raised for it; the shared ticket stays linked to the others.'}
+            </Typography>
+          ) : null}
+          {offerOverride && completionNeedsOverride(item) ? <Alert severity="info">{overrideHint(item)}</Alert> : null}
           {isComplete ? (
             <>
               <TextField
                 size="small"
-                label="Completion note (evidence)"
+                required={evidenceRequired}
+                label={item.evidence_required ? 'Evidence' : 'Completion note (evidence)'}
                 placeholder="e.g. WS-014 assigned, 3D mouse issued and NX licence assigned."
                 multiline
                 minRows={2}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
               />
-              {item.validation_rule ? (
+              {offerOverride ? (
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -426,11 +459,7 @@ export function TaskActionDialog({
                       onChange={(event) => setOverride(event.target.checked)}
                     />
                   }
-                  label={
-                    <Typography variant="body2">
-                      Complete with override (evidence is not recorded in ProTrack)
-                    </Typography>
-                  }
+                  label={<Typography variant="body2">Complete with override (recorded in the audit trail)</Typography>}
                 />
               ) : null}
             </>
@@ -467,7 +496,7 @@ export function TaskActionDialog({
             })
           }
         >
-          {copy.confirm}
+          {isComplete && item.execution_type === 'APPROVAL_REQUIRED' ? 'Approve & complete' : copy.confirm}
         </ProsohmButton>
       </DialogActions>
     </Dialog>
@@ -476,16 +505,19 @@ export function TaskActionDialog({
 
 const HISTORY_STATUS_LABEL: Record<string, string> = {
   not_started: 'Not started',
+  ready: 'Ready',
   in_progress: 'In progress',
+  waiting: 'Waiting',
   blocked: 'Blocked',
   completed: 'Completed',
   not_required: 'Not required',
   waived: 'Waived',
+  cancelled: 'Cancelled',
 };
 
 function historyTitle(event: { event: string; old_status: string | null; new_status: string | null; ticket_number: string | null }) {
   if (event.event === 'created') return 'Task created';
-  if (event.event === 'request_linked') return `Request ${event.ticket_number ?? ''} linked`;
+  if (event.event === 'request_linked') return `Ticket ${event.ticket_number ?? ''} linked`;
   const from = event.old_status ? HISTORY_STATUS_LABEL[event.old_status] ?? event.old_status : '—';
   const to = event.new_status ? HISTORY_STATUS_LABEL[event.new_status] ?? event.new_status : '—';
   return `${from} → ${to}`;
@@ -502,6 +534,18 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
       </Typography>
     </Stack>
   );
+}
+
+function executionSummary(item: OnboardingChecklistItem) {
+  return [
+    item.execution_type_label,
+    item.mandatory ? 'mandatory' : 'optional',
+    item.blocks_completion ? null : 'does not block completion',
+    item.evidence_required ? 'evidence required' : null,
+    item.confirm_by_label ? `confirmed by ${item.confirm_by_label.toLowerCase()}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 export function TaskDetailDrawer({
@@ -552,50 +596,32 @@ export function TaskDetailDrawer({
             ))}
           </Stack>
 
-          {item.can_edit ? (
+          {item.allowed_actions.length > 0 || item.can_create_request || item.can_repair_link || item.help_ticket_id ? (
             <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', rowGap: 0.75 }}>
-              {!resolved ? (
-                <ProsohmButton size="small" buttonVariant="primary" disabled={busy} onClick={() => onAction({ kind: 'complete' })}>
-                  Mark complete
-                </ProsohmButton>
-              ) : (
+              {item.allowed_actions.map((code) => (
                 <ProsohmButton
+                  key={code}
                   size="small"
-                  buttonVariant="secondary"
+                  buttonVariant={code === 'complete' ? 'primary' : 'secondary'}
                   disabled={busy}
-                  onClick={() => onAction({ kind: 'status', status: 'not_started' })}
+                  onClick={() => onAction(ACTION_FOR_CODE[code])}
                 >
-                  Reopen
+                  {actionLabel(item, code)}
                 </ProsohmButton>
-              )}
+              ))}
               {item.can_create_request ? (
                 <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'request' })}>
-                  Create request
+                  Create ticket
                 </ProsohmButton>
               ) : null}
-              {item.help_ticket_id ? (
+              {item.can_repair_link ? (
+                <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'repair' })}>
+                  Repair link
+                </ProsohmButton>
+              ) : null}
+              {item.help_ticket_id && !item.link_broken ? (
                 <ProsohmButton size="small" buttonVariant="secondary" onClick={() => navigate(requestHref(item))}>
-                  Open request
-                </ProsohmButton>
-              ) : null}
-              {!resolved && item.status !== 'blocked' ? (
-                <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'status', status: 'blocked' })}>
-                  Mark blocked
-                </ProsohmButton>
-              ) : null}
-              {!resolved && item.status === 'blocked' ? (
-                <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'status', status: 'in_progress' })}>
-                  Unblock
-                </ProsohmButton>
-              ) : null}
-              {!resolved ? (
-                <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'status', status: 'not_required' })}>
-                  Not required
-                </ProsohmButton>
-              ) : null}
-              {!resolved && item.can_waive ? (
-                <ProsohmButton size="small" buttonVariant="secondary" disabled={busy} onClick={() => onAction({ kind: 'status', status: 'waived' })}>
-                  Waive
+                  Open ticket
                 </ProsohmButton>
               ) : null}
             </Stack>
@@ -603,6 +629,7 @@ export function TaskDetailDrawer({
 
           <Divider sx={{ mb: 1 }} />
           <DetailRow label="Category" value={item.section} />
+          <DetailRow label="Execution" value={executionSummary(item)} />
           <DetailRow
             label="Owner"
             value={`${item.responsibility_label}${item.owner_name ? ` · ${item.owner_name}` : ' · no named person'}`}
@@ -622,16 +649,19 @@ export function TaskDetailDrawer({
             }
           />
           <DetailRow
-            label="Linked request"
+            label="Ticket"
             value={
-              item.help_ticket_number ? (
+              item.link_broken ? (
+                'Link broken — the ticket no longer exists'
+              ) : item.help_ticket_number ? (
                 <Link component={RouterLink} to={requestHref(item)}>
-                  {item.help_ticket_number} · {REQUEST_STATUS_LABELS[item.request_status ?? ''] ?? item.request_status}
+                  {item.help_ticket_number} · {item.request_status_label ?? item.request_status}
+                  {ticketOwnerText(item) ? ` · ${ticketOwnerText(item)}` : ''}
                 </Link>
-              ) : item.request_category ? (
-                item.requires_request ? 'Required — not created yet' : 'None (can be completed directly)'
+              ) : item.execution_type === 'TICKET_REQUIRED' ? (
+                'Required — not created yet'
               ) : (
-                'Not applicable (completed directly by the manager)'
+                'Not needed for this task'
               )
             }
           />
@@ -651,6 +681,7 @@ export function TaskDetailDrawer({
               ) : null}
             </>
           ) : null}
+          {item.evidence_note ? <DetailRow label="Evidence" value={item.evidence_note} /> : null}
           {item.notes ? <DetailRow label="Notes" value={item.notes} /> : null}
 
           <Divider sx={{ my: 1.25 }} />

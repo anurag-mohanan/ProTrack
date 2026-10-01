@@ -33,9 +33,9 @@ from app.models.it_operations import (
 from app.models.models import User
 from app.models.resource_shifts import ResourceShift
 from app.services import it_inventory_rules as rules
+from app.services import resource_allocation_engine as allocation
 from app.services import resource_shift_service as shifts
 from app.services.activity_service import log_activity
-from app.services.it_provisioning_service import shift_windows_overlap
 
 MODULE = "it_operations"
 SEAT_ACTIVE = "active"
@@ -49,6 +49,50 @@ def _full_name(user: User | None) -> str | None:
     if user is None:
         return None
     return f"{user.first_name} {user.last_name}".strip() or None
+
+
+def _licenses_by_user(db: Session, user_ids: set[UUID], *, on_date: date) -> dict[UUID, list[dict[str, Any]]]:
+    """Active license allocations per employee with their scheduled window (None = unscheduled)."""
+    from app.models.it_operations import SoftwareAssignment, SoftwareCatalog, SoftwareLicensePool
+
+    if not user_ids:
+        return {}
+    rows = db.execute(
+        select(SoftwareAssignment, SoftwareLicensePool, SoftwareCatalog)
+        .join(SoftwareLicensePool, SoftwareLicensePool.id == SoftwareAssignment.license_pool_id)
+        .join(SoftwareCatalog, SoftwareCatalog.id == SoftwareLicensePool.software_id)
+        .where(
+            SoftwareAssignment.user_id.in_(user_ids),
+            or_(SoftwareAssignment.released_date.is_(None), SoftwareAssignment.released_date > on_date),
+        )
+    ).all()
+    shift_ids = {a.shift_id for a, _, _ in rows if a.shift_id}
+    shift_map = (
+        {s.id: s for s in db.scalars(select(ResourceShift).where(ResourceShift.id.in_(shift_ids))).all()}
+        if shift_ids
+        else {}
+    )
+    out: dict[UUID, list[dict[str, Any]]] = defaultdict(list)
+    for assignment, pool, software in rows:
+        start = assignment.assigned_date or on_date
+        if not allocation.dates_overlap(start, allocation._row_dates(assignment)[1], on_date, on_date):
+            continue
+        window = allocation.window_for_row(assignment, shift_map) if allocation.is_scheduled(assignment) else None
+        metric = allocation.license_metric(pool)
+        out[assignment.user_id].append(
+            {
+                "assignment_id": str(assignment.id),
+                "license_pool_id": str(pool.id),
+                "software_name": software.name,
+                "metric": metric,
+                "metric_label": allocation.METRIC_INFO[metric]["label"],
+                "window_label": window.label if window else (
+                    "Authorized (unscheduled)" if metric == allocation.METRIC_CONCURRENT else "All hours"
+                ),
+                "window": window,
+            }
+        )
+    return out
 
 
 def seat_type_for(asset: Asset, asset_type: AssetType | None) -> str:
@@ -68,6 +112,7 @@ def _open_rows(
             Asset.is_deleted.is_(False),
             AssetAssignment.assigned_date <= on_date,
             or_(AssetAssignment.returned_date.is_(None), AssetAssignment.returned_date > on_date),
+            or_(AssetAssignment.planned_end_date.is_(None), AssetAssignment.planned_end_date >= on_date),
         )
     )
     if user_ids is not None:
@@ -87,6 +132,7 @@ def _asset_occupants(
             AssetAssignment.asset_id.in_(asset_ids),
             AssetAssignment.assigned_date <= on_date,
             or_(AssetAssignment.returned_date.is_(None), AssetAssignment.returned_date > on_date),
+            or_(AssetAssignment.planned_end_date.is_(None), AssetAssignment.planned_end_date >= on_date),
         )
     ).all()
     out: dict[UUID, list[AssetAssignment]] = defaultdict(list)
@@ -234,6 +280,11 @@ def derive_seats(
         sh = shift_map.get(shift_id) if shift_id else None
         return shifts.format_shift_label(sh) if sh else None
 
+    def window_label(row: AssetAssignment) -> str:
+        return shift_label(row.shift_id) or allocation.window_for_row(row, shift_map).label
+
+    licenses = _licenses_by_user(db, all_users, on_date=when)
+
     def component_row(assignment: AssetAssignment, asset: Asset, asset_type: AssetType) -> dict[str, Any]:
         role = rules.role_for_asset_type(asset_type)
         return {
@@ -247,7 +298,7 @@ def derive_seats(
             "status": asset.status,
             "assignment_id": str(assignment.id),
             "assigned_date": str(assignment.assigned_date),
-            "shift_display": shift_label(assignment.shift_id),
+            "shift_display": window_label(assignment),
         }
 
     seats: list[dict[str, Any]] = []
@@ -286,6 +337,10 @@ def derive_seats(
                         "seat_code": None,
                         "shift_id": None,
                         "shift_display": None,
+                        "window": None,
+                        "needs_review": False,
+                        "licenses": [{k: v for k, v in lic.items() if k != "window"}
+                                     for lic in licenses.get(user_id, [])],
                         "primary": None,
                         "seat_type": None,
                         "seat_type_label": None,
@@ -312,25 +367,27 @@ def derive_seats(
             )
             shared_with = []
             conflicts = []
-            target = shift_map.get(assignment.shift_id) if assignment.shift_id else None
+            seat_window = allocation.window_for_row(assignment, shift_map)
             for other in occupants.get(asset.id, []):
                 if other.id == assignment.id:
                     continue
-                other_shift = shift_map.get(other.shift_id) if other.shift_id else None
+                other_window = allocation.window_for_row(other, shift_map)
                 entry = {
                     "user_id": str(other.assigned_to_user_id),
                     "user_name": _full_name(users.get(other.assigned_to_user_id)),
-                    "shift_display": shift_label(other.shift_id),
+                    "shift_display": window_label(other),
                 }
                 if other.assigned_to_user_id != user_id:
                     shared_with.append(entry)
-                overlapping = (
-                    target is None
-                    or other_shift is None
-                    or shift_windows_overlap(target, other_shift)
-                )
-                if overlapping and other.assigned_to_user_id != user_id:
-                    conflicts.append({**entry, "reason": "Overlapping hours on the same device"})
+                if other.assigned_to_user_id != user_id and allocation.windows_overlap(seat_window, other_window):
+                    conflicts.append(
+                        {**entry, "reason": f"Overlapping hours on the same device "
+                                            f"({allocation.describe_overlap(seat_window, other_window)})"}
+                    )
+            seat_licenses = [
+                lic for lic in licenses.get(user_id, [])
+                if lic["window"] is None or allocation.windows_overlap(lic["window"], seat_window)
+            ]
             record = records.get((user_id, assignment.shift_id, asset.id))
             seats.append(
                 {
@@ -338,7 +395,10 @@ def derive_seats(
                     "seat_id": str(record.id) if record else None,
                     "seat_code": record.code if record else None,
                     "shift_id": str(assignment.shift_id) if assignment.shift_id else None,
-                    "shift_display": shift_label(assignment.shift_id),
+                    "shift_display": window_label(assignment),
+                    "window": seat_window.times,
+                    "needs_review": seat_window.legacy,
+                    "licenses": [{k: v for k, v in lic.items() if k != "window"} for lic in seat_licenses],
                     "primary": {
                         "asset_id": str(asset.id),
                         "asset_number": asset.asset_number,

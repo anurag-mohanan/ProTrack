@@ -781,6 +781,51 @@ def _inventory_issues(db: Session) -> list[dict]:
     ]
 
 
+def _allocation_issues(db: Session) -> list[dict]:
+    from app.services import resource_assignment_service
+
+    review = resource_assignment_service.legacy_review(db)
+    legacy = [
+        {"asset_number": r["asset_number"], "user_name": r["user_name"], "assigned_date": r["assigned_date"],
+         "href": "/it/allocation?view=legacy"}
+        for r in review["assignments"]
+    ]
+    unconfigured = [
+        {"pool_id": p["license_pool_id"], "label": p["label"]}
+        for p in review["license_pools"] if p["metric"] == "UNSPECIFIED"
+    ]
+    over = [
+        {"pool_id": p["license_pool_id"], "label": p["label"], "detail": p["issue"]}
+        for p in review["license_pools"] if p["compliance_status"] in {"OVER_ALLOCATED", "EXPIRED"}
+    ]
+    return [
+        _issue(
+            code="legacy_assignments_need_review",
+            severity="warning",
+            domain="seats",
+            title="Open assignments with no shift or time window (legacy — treated as all hours)",
+            count=len(legacy),
+            samples=legacy,
+        ),
+        _issue(
+            code="license_metric_unconfigured",
+            severity="warning",
+            domain="licenses",
+            title="License pools with no license metric (each assignment consumes a right)",
+            count=len(unconfigured),
+            samples=unconfigured,
+        ),
+        _issue(
+            code="license_over_allocated",
+            severity="error",
+            domain="licenses",
+            title="License pools over-allocated or expired with active assignments",
+            count=len(over),
+            samples=over,
+        ),
+    ]
+
+
 def _href_for_sample(sample: dict) -> str | None:
     if sample.get("item_id"):
         return f"/it/inventory?item={sample['item_id']}"
@@ -821,6 +866,7 @@ def build_data_quality_report(db: Session) -> dict:
         + _asset_record_issues(db)
         + _seat_issues(db)
         + _inventory_issues(db)
+        + _allocation_issues(db)
     )
     _annotate_sample_hrefs(issues)
 

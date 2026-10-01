@@ -20,6 +20,7 @@ import {
   notificationQueryKeys,
 } from '../../services/notificationService';
 import { formatDateTime } from '../../utils/format';
+import { ticketHref } from '../tickets/ticketConstants';
 import type { Notification } from '../../types';
 
 export function NotificationBell() {
@@ -95,6 +96,9 @@ export function NotificationBell() {
                 if (notification.entity_type === 'it_stock_item' && notification.entity_id) {
                   setAnchorEl(null);
                   navigate(`/it/inventory?view=low-stock&item=${notification.entity_id}`);
+                } else if (notification.entity_type === 'ticket' && notification.entity_id) {
+                  setAnchorEl(null);
+                  navigate(ticketHref(notification.entity_id));
                 }
               }}
             >

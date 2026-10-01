@@ -123,6 +123,9 @@ class AssetType(Base, TimestampMixin, TenantMixin):
     category: Mapped[str] = mapped_column(String(40), nullable=False, default="other")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     numbering_prefix: Mapped[Optional[str]] = mapped_column(String(10))
+    # Resource sharing policy; null = default for the component role (see allocation engine).
+    is_shareable: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    requires_shift: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="asset_type")
 
@@ -467,9 +470,14 @@ ASSIGNMENT_TYPE_BACKUP = "BACKUP"
 ASSET_ASSIGNMENT_TYPES = frozenset(
     {
         ASSIGNMENT_TYPE_PRIMARY,
+        "SECONDARY",
+        "SHARED",
         ASSIGNMENT_TYPE_SHIFT_SHARED,
         ASSIGNMENT_TYPE_TEMPORARY,
         ASSIGNMENT_TYPE_BACKUP,
+        "ONBOARDING",
+        "PROJECT",
+        "OTHER",
     }
 )
 
@@ -552,8 +560,19 @@ class AssetAssignment(Base, TimestampMixin, TenantMixin):
     )
     override_reason: Mapped[Optional[str]] = mapped_column(String(500))
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Scheduled last day (inclusive); returned_date records the actual release.
+    planned_end_date: Mapped[Optional[date]] = mapped_column(Date)
+    # Custom daily window "HH:MM" (overrides the shift window). "00:00"–"24:00" = all hours.
+    # Rows with no shift and no window are legacy all-hours assignments needing review.
+    start_time: Mapped[Optional[str]] = mapped_column(String(5))
+    end_time: Mapped[Optional[str]] = mapped_column(String(5))
+    purpose: Mapped[Optional[str]] = mapped_column(String(200))
     returned_date: Mapped[Optional[date]] = mapped_column(Date)
     return_condition: Mapped[Optional[str]] = mapped_column(String(40))
+    released_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    released_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     asset: Mapped[Asset] = relationship(back_populates="assignments")
@@ -753,6 +772,8 @@ COMMERCIAL_MODELS = frozenset({"perpetual", "subscription"})
 ASSIGNMENT_LICENSE_TYPES = frozenset(
     {
         "named_user",
+        "per_user",
+        "site",
         "floating",
         "concurrent",
         "device_bound",
@@ -898,6 +919,22 @@ class SoftwareAssignment(Base, TimestampMixin, TenantMixin):
     )
     assigned_date: Mapped[Optional[date]] = mapped_column(Date)
     released_date: Mapped[Optional[date]] = mapped_column(Date)
+    # Scheduled usage window (concurrent/floating licenses). No shift and no window =
+    # authorization only — the employee may use the license but consumes no right.
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True, index=True
+    )
+    start_time: Mapped[Optional[str]] = mapped_column(String(5))
+    end_time: Mapped[Optional[str]] = mapped_column(String(5))
+    planned_end_date: Mapped[Optional[date]] = mapped_column(Date)
+    purpose: Mapped[Optional[str]] = mapped_column(String(200))
+    assigned_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    released_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    override_reason: Mapped[Optional[str]] = mapped_column(String(500))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     department: Mapped[Optional[str]] = mapped_column(String(100))
     import_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1428,5 +1465,85 @@ class RestockRequest(Base, TimestampMixin, TenantMixin):
     )
     requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ResourceReservation(Base, TimestampMixin, TenantMixin):
+    """Hold on an asset or license right over a date range + daily window.
+
+    Separate from assignments: a reservation blocks others (except the person it is
+    for) until it is released or fulfilled by a real assignment.
+    """
+
+    __tablename__ = "it_resource_reservations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # asset | license
+    resource_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
+    )
+    license_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_license_pools.id"), nullable=True, index=True
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    reserved_for: Mapped[Optional[str]] = mapped_column(String(200))
+    provisioning_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("it_provisioning_requests.id"), nullable=True, index=True
+    )
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("rp_shifts.id"), nullable=True
+    )
+    start_time: Mapped[Optional[str]] = mapped_column(String(5))
+    end_time: Mapped[Optional[str]] = mapped_column(String(5))
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    # ACTIVE | RELEASED | FULFILLED
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(300))
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    released_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    released_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    release_reason: Mapped[Optional[str]] = mapped_column(String(300))
+
+
+class LicenseUsageSession(Base, TimestampMixin, TenantMixin):
+    """Actual license consumption (check-out / check-in), separate from allocation.
+
+    Recorded manually today; a license-server integration writes the same rows with
+    a different ``source``.
+    """
+
+    __tablename__ = "it_license_usage_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    license_pool_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_license_pools.id"), nullable=False, index=True
+    )
+    assignment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_assignments.id"), nullable=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True
+    )
+    checked_out_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    checked_in_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    # manual | license_server
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="manual")
+    checked_out_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    checked_in_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text)

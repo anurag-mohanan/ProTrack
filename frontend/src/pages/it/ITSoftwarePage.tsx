@@ -42,6 +42,8 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_SOFTWARE_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ITResourcePackagesPanel } from '../../components/it/ITResourcePackagesPanel';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -63,6 +65,23 @@ import type {
 import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import { accessContextFromUser, canManageItAssets, canManageItSoftware } from '../../utils/permissions';
+import { fetchShifts } from '../../api/resourceShifts';
+import { itAllocationKeys } from '../../api/itAllocation';
+import { AllocationCheckPanel } from '../../components/it/allocation/AllocationCheckPanel';
+import { AllocationWindowFields } from '../../components/it/allocation/AllocationWindowFields';
+import { LicenseDetailDialog } from '../../components/it/allocation/LicenseDetailDialog';
+import {
+  NO_OVERRIDE,
+  checkAllowsSave,
+  emptyWindow,
+  overridePayload,
+  windowReady,
+  windowToInput,
+  type AllocationWindowState,
+  type OverrideState,
+} from '../../components/it/allocation/allocationWindow';
+import { COMPLIANCE_COLORS, LICENSE_METRIC_OPTIONS, metricRule } from '../../components/it/allocation/licenseMetrics';
+import type { AllocationCheckRequest, AllocationCheckResult } from '../../types/itAllocation';
 
 type TabKey =
   | 'catalog'
@@ -95,14 +114,7 @@ const TAB_FROM_URL: Record<string, TabKey> = {
   packages: 'packages',
 };
 
-const ASSIGNMENT_MODEL_OPTIONS = [
-  { value: 'named_user', label: 'Named user' },
-  { value: 'floating', label: 'Floating' },
-  { value: 'concurrent', label: 'Concurrent' },
-  { value: 'device_bound', label: 'Device bound' },
-  { value: 'network', label: 'Network' },
-  { value: 'other', label: 'Other' },
-];
+const ASSIGNMENT_MODEL_OPTIONS = LICENSE_METRIC_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 const COMMERCIAL_MODEL_OPTIONS = [
   { value: 'subscription', label: 'Subscription' },
@@ -213,6 +225,10 @@ export function ITSoftwarePage() {
   const [licenseForm, setLicenseForm] = useState<LicenseForm>(emptyLicense);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignForm, setAssignForm] = useState<AssignForm>(emptyAssign);
+  const [assignWindow, setAssignWindow] = useState<AllocationWindowState>(() => emptyWindow('all'));
+  const [assignOverride, setAssignOverride] = useState<OverrideState>(NO_OVERRIDE);
+  const [assignCheck, setAssignCheck] = useState<AllocationCheckResult | undefined>();
+  const [detailPool, setDetailPool] = useState<SoftwareLicensePool | null>(null);
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [requirementForm, setRequirementForm] = useState<RequirementForm>(emptyRequirement);
   const [terminateTarget, setTerminateTarget] = useState<SoftwareLicensePool | null>(null);
@@ -268,12 +284,34 @@ export function ITSoftwarePage() {
           const status = (pool.status || 'active').toLowerCase();
           return status === 'active' || status === 'expiring_soon';
         })
-        .filter((pool) => (pool.available_count ?? 0) > 0)
         .map((pool) => ({
           value: pool.id,
-          label: `${pool.entitlement_code ? `${pool.entitlement_code} · ` : ''}${pool.software_name ?? 'Software'} — ${pool.available_count}/${pool.seat_count} available`,
+          label: `${pool.entitlement_code ? `${pool.entitlement_code} · ` : ''}${pool.software_name ?? 'Software'} — ${pool.license_metric_label ?? 'License'}, ${
+            pool.license_metric === 'SITE'
+              ? 'site-wide'
+              : `${pool.available_rights ?? pool.available_count}/${pool.seat_count} free`
+          }`,
         })),
     [licensesQuery.data],
+  );
+
+  const shiftsQuery = useQuery({
+    queryKey: ['resource-shifts', 'list', 'active'],
+    queryFn: () => fetchShifts({ active_only: true }),
+    enabled: assignOpen,
+  });
+
+  const assignCheckRequest = useMemo<AllocationCheckRequest | null>(
+    () =>
+      assignOpen && assignForm.license_pool_id && assignForm.user_id && windowReady(assignWindow)
+        ? {
+            resource_type: 'license',
+            resource_id: assignForm.license_pool_id,
+            user_id: assignForm.user_id,
+            ...windowToInput(assignWindow),
+          }
+        : null,
+    [assignOpen, assignForm.license_pool_id, assignForm.user_id, assignWindow],
   );
 
   const userOptions = useMemo(
@@ -386,12 +424,26 @@ export function ITSoftwarePage() {
         license_pool_id: assignForm.license_pool_id,
         user_id: optionalString(assignForm.user_id),
         notes: optionalString(assignForm.notes),
+        ...(() => {
+          const w = windowToInput(assignWindow);
+          return {
+            shift_id: w.shift_id,
+            start_time: w.start_time,
+            end_time: w.end_time,
+            assigned_date: w.start_date,
+            planned_end_date: w.end_date,
+          };
+        })(),
+        ...overridePayload(assignCheck, assignOverride),
       }),
     onSuccess: () => {
       showSuccess('License assigned.');
       setAssignOpen(false);
       setAssignForm(emptyAssign);
+      setAssignWindow(emptyWindow('all'));
+      setAssignOverride(NO_OVERRIDE);
       invalidateSoftware();
+      void queryClient.invalidateQueries({ queryKey: itAllocationKeys.all });
     },
     onError: (error) => showError(getErrorMessage(error)),
   });
@@ -544,9 +596,54 @@ export function ITSoftwarePage() {
           return <Chip size="small" color={color} variant="outlined" label={status} />;
         },
       },
-      { field: 'seat_count', headerName: 'Total', width: 80 },
-      { field: 'assigned_count', headerName: 'Assigned', width: 90 },
-      { field: 'available_count', headerName: 'Available', width: 90 },
+      {
+        field: 'license_metric_label',
+        headerName: 'Metric',
+        width: 150,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      { field: 'seat_count', headerName: 'Rights', width: 75 },
+      {
+        field: 'authorized_users',
+        headerName: 'Authorized',
+        width: 95,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'rights_allocated',
+        headerName: 'Allocated / peak',
+        width: 120,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'active_usage',
+        headerName: 'In use',
+        width: 80,
+        valueFormatter: (value) => formatCellValue(value),
+      },
+      {
+        field: 'available_rights',
+        headerName: 'Available',
+        width: 90,
+        valueFormatter: (value, row) =>
+          row.license_metric === 'SITE' ? 'Unlimited' : formatCellValue(value),
+      },
+      {
+        field: 'compliance_status',
+        headerName: 'Compliance',
+        width: 140,
+        renderCell: (params) =>
+          params.row.compliance_status ? (
+            <Chip
+              size="small"
+              title={params.row.compliance_reason ?? undefined}
+              color={COMPLIANCE_COLORS[params.row.compliance_status] ?? 'default'}
+              label={params.row.compliance_status.replace('_', ' ')}
+            />
+          ) : (
+            '—'
+          ),
+      },
       {
         field: 'expiry_date',
         headerName: 'Renewal / Expiry',
@@ -568,14 +665,16 @@ export function ITSoftwarePage() {
       {
         field: 'actions',
         headerName: '',
-        width: 200,
+        width: 270,
         sortable: false,
         renderCell: (params) => {
-          if (!canManage) return null;
           const status = (params.row.status || 'active').toLowerCase();
-          const active = status === 'active' || status === 'expiring_soon';
+          const active = canManage && (status === 'active' || status === 'expiring_soon');
           return (
             <Stack direction="row" spacing={0.5}>
+              <ProsohmButton size="small" buttonVariant="outlined" onClick={() => setDetailPool(params.row)}>
+                Details
+              </ProsohmButton>
               {active && params.row.commercial_model === 'subscription' ? (
                 <ProsohmButton
                   size="small"
@@ -638,10 +737,25 @@ export function ITSoftwarePage() {
         valueFormatter: (value) => formatCellValue(value),
       },
       {
+        field: 'window_label',
+        headerName: 'Usage window',
+        width: 170,
+        valueGetter: (_value, row) =>
+          row.allocation_kind === 'authorization'
+            ? 'Authorized (unscheduled)'
+            : row.window_label || 'All hours',
+      },
+      {
         field: 'assigned_date',
         headerName: 'Assigned',
         width: 120,
         valueFormatter: (value) => formatDate(value as string | null) || '—',
+      },
+      {
+        field: 'planned_end_date',
+        headerName: 'Until',
+        width: 110,
+        valueFormatter: (value) => formatDate(value as string | null) || 'Open',
       },
       {
         field: 'actions',
@@ -805,6 +919,10 @@ export function ITSoftwarePage() {
       showError(error);
       return;
     }
+    if (!checkAllowsSave(assignCheck, assignOverride)) {
+      showError(assignCheck?.reason || 'Wait for the availability check to finish.');
+      return;
+    }
     assignMutation.mutate();
   };
 
@@ -894,6 +1012,7 @@ export function ITSoftwarePage() {
           ) : undefined
         }
       />
+      <ITAreaTabs items={IT_SOFTWARE_AREA_TABS} />
 
       {tab === 'catalog' && (
         <ContentCard>
@@ -1156,6 +1275,7 @@ export function ITSoftwarePage() {
                 setLicenseForm((f) => ({ ...f, assignment_model: String(e.target.value) }))
               }
               options={ASSIGNMENT_MODEL_OPTIONS}
+              helper={metricRule(licenseForm.assignment_model)}
             />
             <FormField
               label="Currency"
@@ -1256,8 +1376,30 @@ export function ITSoftwarePage() {
               required
               searchable
               value={assignForm.user_id}
-              onChange={(e) => setAssignForm((f) => ({ ...f, user_id: String(e.target.value) }))}
+              onChange={(e) => {
+                setAssignForm((f) => ({ ...f, user_id: String(e.target.value) }));
+                setAssignOverride(NO_OVERRIDE);
+              }}
               options={userOptions}
+            />
+            <AllocationWindowFields
+              value={assignWindow}
+              onChange={(next) => {
+                setAssignWindow(next);
+                setAssignOverride(NO_OVERRIDE);
+              }}
+              shifts={shiftsQuery.data ?? []}
+              allModeLabel="Unscheduled (authorization / all hours)"
+            />
+            <Typography variant="caption" color="text.secondary">
+              Concurrent licenses: pick the shift or time window the employee uses it so non-overlapping
+              shifts can share one right. Named / per-user licenses hold a right regardless of shift.
+            </Typography>
+            <AllocationCheckPanel
+              request={assignCheckRequest}
+              override={assignOverride}
+              onOverrideChange={setAssignOverride}
+              onResult={setAssignCheck}
             />
             <FormField
               label="Notes"
@@ -1269,6 +1411,8 @@ export function ITSoftwarePage() {
           </FormSection>
         </Box>
       </FormDrawer>
+
+      <LicenseDetailDialog pool={detailPool} canManage={canManage} onClose={() => setDetailPool(null)} />
 
       <FormDrawer
         open={requirementOpen}

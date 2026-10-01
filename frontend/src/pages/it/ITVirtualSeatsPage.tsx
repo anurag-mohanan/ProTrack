@@ -19,6 +19,7 @@ import { ITAreaTabs } from '../../components/it/ITAreaTabs';
 import { IT_ASSET_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { SEAT_STATUS_META } from '../../components/it/inventory/inventoryFormat';
 import { SearchField } from '../../components/it/inventory/SearchField';
+import { SetupAssignDrawer } from '../../components/it/allocation/SetupAssignDrawer';
 import { SeatRequirementsDialog } from '../../components/it/seats/SeatRequirementsDialog';
 import { VirtualSeatDetailDrawer } from '../../components/it/seats/VirtualSeatDetailDrawer';
 import { ContentCard } from '../../components/ui/cards';
@@ -48,6 +49,8 @@ export function ITVirtualSeatsPage() {
   const [onDate, setOnDate] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [requirementsOpen, setRequirementsOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const canAssign = canManageItAssets(access);
 
   const filters = {
     search: search || undefined,
@@ -188,6 +191,11 @@ export function ITVirtualSeatsPage() {
         subtitle="Logical workstations derived from each employee's assigned computer and peripherals"
         action={
           <Stack direction="row" spacing={1}>
+            {canAssign ? (
+              <ProsohmButton buttonVariant="primary" onClick={() => setSetupOpen(true)}>
+                Assign setup
+              </ProsohmButton>
+            ) : null}
             <ProsohmButton buttonVariant="outlined" onClick={() => navigate('/it/inventory?view=availability')}>
               Find available computer
             </ProsohmButton>
@@ -285,6 +293,7 @@ export function ITVirtualSeatsPage() {
         onClose={() => setRequirementsOpen(false)}
         canEdit={canEditRequirements}
       />
+      {canAssign ? <SetupAssignDrawer open={setupOpen} onClose={() => setSetupOpen(false)} /> : null}
     </PageContainer>
   );
 }

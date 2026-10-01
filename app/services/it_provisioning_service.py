@@ -35,7 +35,6 @@ from app.models.models import Ticket, User
 from app.models.resource_shifts import ResourceShift, ResourceShiftAssignment
 from app.services import it_software_service
 from app.services import resource_shift_service as shifts
-from app.services import ticketing_service as tickets
 from app.services.activity_service import log_activity
 
 MODULE = "it_operations"
@@ -47,6 +46,21 @@ CONFLICT_MSG = (
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def license_rights_free(db: Session, pools: list[SoftwareLicensePool], shift_id: UUID | None) -> int:
+    """Free rights for a joiner: within the shift window when known (engine-based)."""
+    from app.services import resource_allocation_engine as allocation
+
+    if shift_id is None:
+        return sum(it_software_service.available_seats(db, pool) for pool in pools)
+    shift = db.get(ResourceShift, shift_id)
+    window = allocation.window_for_shift(shift) if shift else allocation.ALL_HOURS
+    total = 0
+    for pool in pools:
+        free = allocation.license_free_in_window(db, pool, window)
+        total += it_software_service.available_seats(db, pool) if free is None else free
+    return total
 
 
 def _full_name(user: User | None) -> str | None:
@@ -69,28 +83,13 @@ def computer_type_label(code: str | None) -> str | None:
     return COMPUTER_TYPE_LABELS.get(code, code)
 
 
-def _parse_hhmm(value: str) -> int:
-    parts = (value or "00:00").split(":")
-    return int(parts[0]) * 60 + int(parts[1] if len(parts) > 1 else 0)
-
-
 def shift_windows_overlap(a: ResourceShift, b: ResourceShift) -> bool:
     """True when two shift wall-clock windows overlap (handles overnight)."""
+    from app.services import resource_allocation_engine as allocation
+
     if a.id == b.id:
         return True
-
-    def intervals(shift: ResourceShift) -> list[tuple[int, int]]:
-        start = _parse_hhmm(shift.start_time)
-        end = _parse_hhmm(shift.end_time)
-        if shift.is_overnight or end <= start:
-            return [(start, 24 * 60), (0, end)]
-        return [(start, end)]
-
-    for a0, a1 in intervals(a):
-        for b0, b1 in intervals(b):
-            if a0 < b1 and b0 < a1:
-                return True
-    return False
+    return allocation.windows_overlap(allocation.window_for_shift(a), allocation.window_for_shift(b))
 
 
 def asset_is_laptop(db: Session, asset: Asset) -> bool:
@@ -300,8 +299,7 @@ def create_provisioning_for_user(
                     SoftwareLicensePool.status == "active",
                 )
             ).all()
-            free = sum(it_software_service.available_seats(db, pool) for pool in pools)
-            if free < 1:
+            if license_rights_free(db, list(pools), shift_id) < 1:
                 status = "LICENSE_NOT_AVAILABLE"
 
         row = EmployeeSoftwareRequirement(
@@ -336,21 +334,33 @@ def create_provisioning_for_user(
     if waiting_license:
         request.status = "WAITING_FOR_LICENSE"
 
-    ticket = _create_it_ticket(db, request=request, user=user, created_by=created_by, hardware=hardware_row)
+    request_items = []
+    if checklist_id is not None:
+        from app.models.models import OnboardingChecklistItem
+
+        request_items = list(
+            db.scalars(
+                select(OnboardingChecklistItem).where(
+                    OnboardingChecklistItem.checklist_id == checklist_id,
+                    OnboardingChecklistItem.responsibility == "it",
+                    OnboardingChecklistItem.requires_request.is_(True),
+                )
+            ).all()
+        )
+    ticket = _create_it_ticket(
+        db,
+        request=request,
+        user=user,
+        created_by=created_by,
+        hardware=hardware_row,
+        task_items=request_items,
+    )
     request.ticket_id = ticket.id
     db.add(request)
     db.flush()
-    if checklist_id is not None:
-        from app.models.models import OnboardingChecklistItem
+    if request_items:
         from app.services import onboarding_task_service as onboarding_tasks
 
-        request_items = db.scalars(
-            select(OnboardingChecklistItem).where(
-                OnboardingChecklistItem.checklist_id == checklist_id,
-                OnboardingChecklistItem.responsibility == "it",
-                OnboardingChecklistItem.requires_request.is_(True),
-            )
-        ).all()
         onboarding_tasks.link_items_to_ticket(
             db, items=request_items, ticket=ticket, actor=created_by
         )
@@ -388,7 +398,18 @@ def _create_it_ticket(
     user: User,
     created_by: User,
     hardware: ItProvisioningHardware,
+    task_items: list | None = None,
 ) -> Ticket:
+    """The provisioning request's ticket — shared with the workstation onboarding task.
+
+    If the workstation task already has an active ticket it is reused (the
+    provisioning detail is added as a comment); otherwise the ticket is created
+    under the task's primary idempotency key so the onboarding auto-raise never
+    creates a second one.
+    """
+    from app.services import onboarding_task_service as onboarding_tasks
+    from app.services import ticket_workflow_service as workflow
+
     name = _full_name(user) or user.email
     emp_code = getattr(user, "employee_code", None) or getattr(user, "employee_id", None)
     hw_lines = []
@@ -441,21 +462,43 @@ def _create_it_ticket(
         f"SOFTWARE\n" + ("\n".join(sw_lines) or "- None") + "\n\n"
         f"Provisioning request id: {request.id}"
     )
-    assignee_id = tickets.category_contact_id(db, "it")
-    ticket = Ticket(
-        ticket_number=tickets.next_ticket_number(db),
+    task = next(iter(task_items or []), None)
+    if task is not None and onboarding_tasks.has_active_request(task):
+        existing = task.help_ticket
+        workflow.add_comment(
+            db,
+            existing,
+            actor=created_by,
+            body=f"IT provisioning requirements recorded.\n\n{description}",
+            is_internal=False,
+            is_agent=True,
+        )
+        if existing.source_record_id is None:
+            existing.source_record_id = str(request.id)
+        db.flush()
+        return existing
+    key = (
+        onboarding_tasks.primary_ticket_key(task)
+        if task is not None and task.help_ticket_id is None
+        else f"it_provisioning:{request.id}"
+    )
+    ticket, _created = workflow.create_ticket(
+        db,
         title=f"Onboarding · {name} · IT Provisioning",
         description=description,
         category="it",
-        priority=request.priority if request.priority in {"low", "medium", "high", "urgent"} else "medium",
-        status="open",
-        requester_id=created_by.id,
-        assignee_id=assignee_id,
-        org_department_id=tickets.default_department_id_for_category(db, "it"),
+        subcategory="onboarding.provisioning",
+        priority=request.priority,
+        requester=created_by,
+        actor=created_by,
+        source_module="it_provisioning",
+        source_record_id=str(request.id),
+        idempotency_key=key,
+        affected_user_id=user.id,
+        onboarding_item_id=task.id if task is not None else None,
+        due_date=request.required_by,
         location=user.designation,
     )
-    db.add(ticket)
-    db.flush()
     return ticket
 
 
@@ -868,29 +911,40 @@ def dashboard_metrics(db: Session) -> dict[str, Any]:
     )
     software_demand: list[dict[str, Any]] = []
     by_sw: dict[UUID, dict[str, Any]] = {}
+    shift_by_request = {
+        r.id: r.shift_id for r in db.scalars(
+            select(ItProvisioningRequest).where(
+                ItProvisioningRequest.id.in_({q.provisioning_request_id for q in sw_reqs if q.provisioning_request_id})
+            )
+        ).all()
+    } if sw_reqs else {}
     for req in sw_reqs:
         entry = by_sw.setdefault(
             req.software_id,
-            {"software_id": str(req.software_id), "requested": 0, "available": 0, "assigned": 0, "shortage": 0},
+            {"software_id": str(req.software_id), "requested": 0, "available": 0, "assigned": 0,
+             "shortage": 0, "_by_shift": {}},
         )
         entry["requested"] += 1
+        shift_key = shift_by_request.get(req.provisioning_request_id)
+        entry["_by_shift"][shift_key] = entry["_by_shift"].get(shift_key, 0) + 1
         catalog = db.get(SoftwareCatalog, req.software_id)
         entry["software_name"] = catalog.name if catalog else None
 
     for software_id, entry in by_sw.items():
-        pools = db.scalars(
+        pools = list(db.scalars(
             select(SoftwareLicensePool).where(
                 SoftwareLicensePool.software_id == software_id,
                 SoftwareLicensePool.status == "active",
             )
-        ).all()
-        available = sum(it_software_service.available_seats(db, pool) for pool in pools)
+        ).all())
         assigned = sum(
             it_software_service.count_active_assignments(db, pool.id) for pool in pools
         )
-        entry["available"] = available
+        by_shift = entry.pop("_by_shift")
+        free_by_shift = {key: license_rights_free(db, pools, key) for key in by_shift}
+        entry["available"] = max(free_by_shift.values()) if free_by_shift else 0
         entry["assigned"] = assigned
-        entry["shortage"] = max(0, entry["requested"] - available)
+        entry["shortage"] = sum(max(0, n - free_by_shift[key]) for key, n in by_shift.items())
         software_demand.append(entry)
 
     return {

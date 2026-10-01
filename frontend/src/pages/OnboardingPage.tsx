@@ -30,6 +30,7 @@ import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import HowToRegRoundedIcon from '@mui/icons-material/HowToRegRounded';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PublishRoundedIcon from '@mui/icons-material/PublishRounded';
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 import UnfoldLessRoundedIcon from '@mui/icons-material/UnfoldLessRounded';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +56,7 @@ import {
   TaskActionDialog,
   TaskDetailDrawer,
 } from '../components/onboarding/OnboardingTaskList';
+import { OnboardingTemplateSettingsDialog } from '../components/onboarding/OnboardingTemplateSettingsDialog';
 import {
   ATTENTION_LABELS,
   actionableAttention,
@@ -96,6 +98,11 @@ export default function OnboardingPage() {
   const [deleteTarget, setDeleteTarget] = useState<OnboardingChecklist | null>(null);
   const [publishTarget, setPublishTarget] = useState<OnboardingChecklist | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const capabilitiesQuery = useQuery({
+    queryKey: ['onboarding', 'capabilities'],
+    queryFn: onboardingApi.capabilities,
+  });
 
   const listQuery = useQuery({
     queryKey: ['onboarding', statusFilter],
@@ -188,8 +195,11 @@ export default function OnboardingPage() {
   });
 
   const taskMutation = useMutation({
-    mutationFn: ({ itemId, submit }: { itemId: string; submit: TaskActionSubmit }) => {
+    mutationFn: async ({ itemId, submit }: { itemId: string; submit: TaskActionSubmit }) => {
       const { action } = submit;
+      if (action.kind === 'repair') {
+        return (await onboardingApi.repairLink(selectedId!, itemId)).checklist;
+      }
       if (action.kind === 'request') {
         return onboardingApi.createItemRequest(selectedId!, itemId, {
           priority: submit.priority,
@@ -204,7 +214,10 @@ export default function OnboardingPage() {
       });
     },
     onSuccess: (data, { submit }) => {
-      showSuccess(submit.action.kind === 'request' ? 'Request created and linked.' : 'Task updated.');
+      const kind = submit.action.kind;
+      showSuccess(
+        kind === 'request' ? 'Ticket created and linked.' : kind === 'repair' ? 'Ticket link repaired.' : 'Task updated.',
+      );
       queryClient.setQueryData(['onboarding', data.id], data);
       void queryClient.invalidateQueries({ queryKey: ['onboarding', statusFilter] });
       void queryClient.invalidateQueries({ queryKey: ['onboarding', 'attention'] });
@@ -225,15 +238,27 @@ export default function OnboardingPage() {
         title="Onboarding"
         subtitle="Standard company checklist (PP-HRD-FO-14) — HR, Admin, Manager, IT, and Accounts. Selecting department / team / manager auto-routes owners and Help Desk tickets."
         action={
-          <ProsohmButton
-            buttonVariant="primary"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Start Onboarding
-          </ProsohmButton>
+          <Stack direction="row" spacing={1}>
+            {capabilitiesQuery.data?.can_configure_templates ? (
+              <ProsohmButton
+                buttonVariant="secondary"
+                startIcon={<TuneRoundedIcon />}
+                onClick={() => setSettingsOpen(true)}
+              >
+                Task settings
+              </ProsohmButton>
+            ) : null}
+            <ProsohmButton
+              buttonVariant="primary"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Start Onboarding
+            </ProsohmButton>
+          </Stack>
         }
       />
+      <OnboardingTemplateSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <Stack
         direction={{ xs: 'column', sm: 'row' }}

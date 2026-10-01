@@ -20,6 +20,7 @@ from app.models.it_operations import (
     IPAddress,
     SoftwareInstallation,
 )
+from app.core.exceptions import ProTrackValidationError
 from app.models.models import User
 from app.services import it_asset_service
 from app.services import it_computer_suggest_service as suggest
@@ -263,22 +264,16 @@ def assignment_preview(
             }
         )
 
-    open_rows = it_asset_service.list_open_assignments(db, asset.id)
-    conflict_ok = True
-    conflict_msg = "No conflicting assignment."
-    if shift_id is None and open_rows:
-        conflict_ok = False
-        conflict_msg = "Asset already has an open assignment. Provide a shift slot for shared-desk use, or return the current user first."
-    elif shift_id is not None:
-        for row in open_rows:
-            if row.shift_id == shift_id:
-                conflict_ok = False
-                conflict_msg = "This asset already has an open assignment for that shift."
-                break
-            if row.shift_id is None:
-                conflict_ok = False
-                conflict_msg = "A legacy assignment without a shift is still open."
-                break
+    from app.services import resource_allocation_engine as allocation
+
+    try:
+        verdict = allocation.evaluate_asset(
+            db, asset, allocation.build_request(db, shift_id=shift_id, user_id=user_id)
+        )
+        conflict_ok = verdict["available"]
+        conflict_msg = "No conflicting assignment." if conflict_ok else verdict["reason"]
+    except ProTrackValidationError as exc:
+        conflict_ok, conflict_msg = False, str(exc.detail)
     checks.append({"code": "conflict", "ok": conflict_ok, "message": conflict_msg})
 
     return {

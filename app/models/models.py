@@ -1734,6 +1734,7 @@ class Ticket(Base, TimestampMixin, TenantMixin):
     __tablename__ = "tickets"
     __table_args__ = (
         UniqueConstraint("tenant_id", "ticket_number", name="uq_tickets_tenant_ticket_number"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_tickets_tenant_idempotency_key"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -1761,9 +1762,61 @@ class Ticket(Base, TimestampMixin, TenantMixin):
     resolution: Mapped[Optional[str]] = mapped_column(Text)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Classification and provenance (phase107). Legacy rows keep NULLs.
+    subcategory: Mapped[Optional[str]] = mapped_column(String(60), index=True)
+    source_module: Mapped[Optional[str]] = mapped_column(String(40), index=True)
+    source_record_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(200))
+    affected_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    onboarding_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "onboarding_checklist_items.id", use_alter=True, name="fk_tickets_onboarding_item_id"
+        ),
+        nullable=True,
+        index=True,
+    )
+    related_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("assets.id"), nullable=True, index=True
+    )
+    related_license_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("software_license_pools.id"), nullable=True
+    )
+    related_stock_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("inventory_items.id"), nullable=True
+    )
+    assignment_group: Mapped[Optional[str]] = mapped_column(String(40), index=True)
+    needs_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    work_performed: Mapped[Optional[str]] = mapped_column(Text)
+    resolution_category: Mapped[Optional[str]] = mapped_column(String(40))
+    closure_reason: Mapped[Optional[str]] = mapped_column(String(60))
+    cancellation_reason: Mapped[Optional[str]] = mapped_column(Text)
+    pending_reason: Mapped[Optional[str]] = mapped_column(Text)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    first_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    sla_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    escalation_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
 
     requester: Mapped[User] = relationship(foreign_keys=[requester_id])
     assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_id])
+    affected_user: Mapped[Optional[User]] = relationship(foreign_keys=[affected_user_id])
+    created_by: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_id])
+    onboarding_item: Mapped[Optional["OnboardingChecklistItem"]] = relationship(
+        foreign_keys=[onboarding_item_id], post_update=True
+    )
     comments: Mapped[list["TicketComment"]] = relationship(
         back_populates="ticket",
         cascade="all, delete-orphan",
@@ -1816,8 +1869,122 @@ class TicketCategoryRoute(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("org_departments.id"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    backup_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    escalation_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    effective_from: Mapped[Optional[date]] = mapped_column(Date)
 
     assignee: Mapped[Optional[User]] = relationship(foreign_keys=[assignee_user_id])
+    backup: Mapped[Optional[User]] = relationship(foreign_keys=[backup_user_id])
+    escalation: Mapped[Optional[User]] = relationship(foreign_keys=[escalation_user_id])
+
+
+class TicketRoutingRule(Base, TimestampMixin, TenantMixin):
+    """Subcategory / source specific owner override on top of the category route."""
+
+    __tablename__ = "ticket_routing_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    category: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    subcategory: Mapped[Optional[str]] = mapped_column(String(60))
+    source_module: Mapped[Optional[str]] = mapped_column(String(40))
+    primary_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    backup_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    escalation_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    default_priority: Mapped[Optional[str]] = mapped_column(String(16))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    effective_from: Mapped[Optional[date]] = mapped_column(Date)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    primary: Mapped[Optional[User]] = relationship(foreign_keys=[primary_user_id])
+    backup: Mapped[Optional[User]] = relationship(foreign_keys=[backup_user_id])
+    escalation: Mapped[Optional[User]] = relationship(foreign_keys=[escalation_user_id])
+
+
+class TicketSlaPolicy(Base, TimestampMixin, TenantMixin):
+    """Response / resolution targets per priority (optionally per category)."""
+
+    __tablename__ = "ticket_sla_policies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "category", "priority", name="uq_ticket_sla_policies_scope"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    category: Mapped[str] = mapped_column(String(20), nullable=False, default="*")
+    priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    response_hours: Mapped[Optional[int]] = mapped_column(Integer)
+    resolution_hours: Mapped[Optional[int]] = mapped_column(Integer)
+    due_soon_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
+    escalate_after_hours: Mapped[Optional[int]] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class TicketAssignmentHistory(Base, TimestampMixin, TenantMixin):
+    """Every owner / group change on a ticket (never deleted)."""
+
+    __tablename__ = "ticket_assignment_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=False, index=True
+    )
+    previous_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    new_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    previous_group: Mapped[Optional[str]] = mapped_column(String(40))
+    new_group: Mapped[Optional[str]] = mapped_column(String(40))
+    changed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    change_type: Mapped[str] = mapped_column(String(30), nullable=False, default="assign")
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    previous_assignee: Mapped[Optional[User]] = relationship(foreign_keys=[previous_assignee_id])
+    new_assignee: Mapped[Optional[User]] = relationship(foreign_keys=[new_assignee_id])
+    changed_by: Mapped[Optional[User]] = relationship(foreign_keys=[changed_by_id])
+
+
+class TicketNotificationLog(Base, TimestampMixin, TenantMixin):
+    """Delivery record per (ticket, event, recipient) — the dedupe key for alerts."""
+
+    __tablename__ = "ticket_notification_log"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "ticket_id", "event_key", "user_id", name="uq_ticket_notification_log_event"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tickets.id"), nullable=False, index=True
+    )
+    event_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="sent")
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 class OnboardingChecklistTemplate(Base, TimestampMixin, TenantMixin):
@@ -1940,6 +2107,19 @@ class OnboardingChecklistItem(Base, TimestampMixin, TenantMixin):
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     completion_type: Mapped[Optional[str]] = mapped_column(String(30))
+    # Execution configuration copied from the template item (phase107).
+    execution_type: Mapped[Optional[str]] = mapped_column(String(30))
+    mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    blocks_completion: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    evidence_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reversible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    task_priority: Mapped[Optional[str]] = mapped_column(String(16))
+    ticket_category: Mapped[Optional[str]] = mapped_column(String(20))
+    ticket_subcategory: Mapped[Optional[str]] = mapped_column(String(60))
+    completion_rule: Mapped[Optional[str]] = mapped_column(String(20))
+    owner_role: Mapped[Optional[str]] = mapped_column(String(80))
+    confirm_by: Mapped[Optional[str]] = mapped_column(String(20))
+    evidence_note: Mapped[Optional[str]] = mapped_column(Text)
 
     checklist: Mapped[OnboardingChecklist] = relationship(back_populates="items")
     owner: Mapped[Optional[User]] = relationship(foreign_keys=[owner_user_id])

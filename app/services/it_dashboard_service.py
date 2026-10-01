@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import MODULE_IT_OPERATIONS
@@ -108,6 +109,48 @@ def _recent_asset_movements(db: Session, *, limit: int = 10) -> list[dict]:
     return movements
 
 
+def _capacity_by_shift(db: Session) -> dict:
+    """Free workstations / laptops / monitors / 3D mice / license rights per shift (engine-based)."""
+    from app.models.it_operations import SoftwareLicensePool
+    from app.models.resource_shifts import ResourceShift
+    from app.services import it_availability_service
+    from app.services import it_inventory_rules as rules
+    from app.services import resource_allocation_engine as allocation
+
+    avail = it_availability_service.computer_availability(db)
+    peripherals = {p["role"]: p for p in avail["peripherals"]}
+    pools = [
+        p for p in db.scalars(select(SoftwareLicensePool)).all()
+        if (p.status or "active") == "active" and allocation.license_metric(p) != allocation.METRIC_SITE
+    ]
+    rows = []
+    for shift in avail["shifts"]:
+        code = shift["shift_code"]
+
+        def free(laptop: bool, _code: str = code) -> int:
+            return sum(
+                1 for c in avail["computers"] if bool(c["is_laptop"]) == laptop
+                for slot in c["shifts"] if slot["shift_code"] == _code and slot["status"] == "AVAILABLE"
+            )
+
+        shift_row = db.get(ResourceShift, UUID(shift["shift_id"])) if shift["shift_id"] else None
+        window = allocation.window_for_shift(shift_row) if shift_row else allocation.ALL_HOURS
+        licenses = sum(allocation.license_free_in_window(db, p, window) or 0 for p in pools)
+        rows.append({
+            "shift_code": code,
+            "shift_display": shift["shift_display"],
+            "workstations": free(False),
+            "laptops": free(True),
+            "monitors": peripherals.get(rules.ROLE_MONITOR, {}).get("available_by_shift", {}).get(code, 0),
+            "mouse_3d": peripherals.get(rules.ROLE_MOUSE_3D, {}).get("available_by_shift", {}).get(code, 0),
+            "license_rights": licenses,
+        })
+    free_any = sum(
+        1 for c in avail["computers"] if any(s["status"] == "AVAILABLE" for s in c["shifts"])
+    )
+    return {"capacity_by_shift": rows, "computers_free_any_shift": free_any}
+
+
 def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
     today = date.today()
     window_days = warranty_days or warranty_alert_days(db)
@@ -163,7 +206,10 @@ def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
         db.scalar(
             select(func.count())
             .select_from(Ticket)
-            .where(*it_open, Ticket.due_date.is_not(None), Ticket.due_date < today)
+            .where(
+                *it_open,
+                or_(Ticket.due_date < today, Ticket.sla_due_at < datetime.utcnow()),
+            )
         )
         or 0
     )
@@ -223,7 +269,12 @@ def dashboard_summary(db: Session, *, warranty_days: int | None = None) -> dict:
     stock_rows = it_stock_service.item_rows(db)
     demand = it_stock_service.upcoming_demand(db)
     seat_counts = virtual_seat_service.seat_summary(virtual_seat_service.derive_seats(db))
+    from app.services import resource_assignment_service
+
+    legacy = resource_assignment_service.legacy_review(db)
     return {
+        **_capacity_by_shift(db),
+        "legacy_assignments_review": legacy["counts"]["assignments"],
         "virtual_seats_total": seat_counts["total_seats"],
         "virtual_seats_incomplete": seat_counts["incomplete"],
         "stock_low_items": sum(1 for r in stock_rows if r["stock_status"] == it_stock_service.STATUS_LOW),

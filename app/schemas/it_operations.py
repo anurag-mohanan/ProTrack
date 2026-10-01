@@ -39,6 +39,8 @@ class AssetTypeRead(TimestampSchema):
     category: str
     numbering_prefix: Optional[str] = None
     is_active: bool
+    is_shareable: Optional[bool] = None
+    requires_shift: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -193,9 +195,14 @@ class AssetRead(TimestampSchema):
 class AssetAssignRequest(BlankOptionalFieldsMixin, BaseModel):
     user_id: UUID
     assigned_date: Optional[date] = None
+    planned_end_date: Optional[date] = None
     notes: Optional[str] = None
     shift_id: Optional[UUID] = None
+    start_time: Optional[str] = Field(default=None, max_length=5)
+    end_time: Optional[str] = Field(default=None, max_length=5)
+    purpose: Optional[str] = Field(default=None, max_length=200)
     assignment_type: Optional[str] = None
+    reservation_id: Optional[UUID] = None
     force_override: bool = False
     override_reason: Optional[str] = Field(default=None, max_length=500)
 
@@ -274,8 +281,16 @@ class AssetAssignmentRead(TimestampSchema):
     assignment_type: Optional[str] = None
     override_reason: Optional[str] = None
     assigned_date: date
+    planned_end_date: Optional[date] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    window_label: Optional[str] = None
+    needs_review: bool = False
+    purpose: Optional[str] = None
     returned_date: Optional[date] = None
     return_condition: Optional[str] = None
+    released_by_user_id: Optional[UUID] = None
+    released_at: Optional[datetime] = None
     notes: Optional[str] = None
 
 
@@ -724,6 +739,8 @@ class ITProfileRead(BaseModel):
     primary_tool: Optional[str] = None
     primary_tool_source: Optional[str] = None
     software_status: list[dict] = Field(default_factory=list)
+    # Open asset + license assignments with their shift/time window (allocation engine).
+    allocations: list[dict] = Field(default_factory=list)
 
 
 class ITDashboardSummary(BaseModel):
@@ -786,6 +803,14 @@ class ITDashboardSummary(BaseModel):
     virtual_seat_conflicts: int = 0
     virtual_seats_total: int = 0
     virtual_seats_incomplete: int = 0
+    license_authorized_users: int = 0
+    license_active_usage: int = 0
+    license_compliance_issues: int = 0
+    license_metric_unconfigured: int = 0
+    license_site_pools: int = 0
+    computers_free_any_shift: int = 0
+    legacy_assignments_review: int = 0
+    capacity_by_shift: list[dict] = Field(default_factory=list)
     recent_movements: list[dict] = Field(default_factory=list)
 
 
@@ -842,10 +867,8 @@ class ITResetResult(BaseModel):
     message: str = ""
 
 
-class ComputerAssignRequest(BlankOptionalFieldsMixin, BaseModel):
-    user_id: UUID
-    assigned_date: Optional[date] = None
-    notes: Optional[str] = None
+class ComputerAssignRequest(AssetAssignRequest):
+    pass
 
 
 class ComputerUnassignRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -1141,6 +1164,17 @@ class SoftwareLicensePoolRead(TimestampSchema):
     license_type: Optional[str] = None
     commercial_model: Optional[str] = None
     assignment_model: Optional[str] = None
+    license_metric: Optional[str] = None
+    license_metric_label: Optional[str] = None
+    license_metric_rule: Optional[str] = None
+    rights_allocated: int = 0
+    rights_consumed: int = 0
+    available_rights: Optional[int] = None
+    authorized_users: int = 0
+    scheduled_peak: Optional[int] = None
+    active_usage: int = 0
+    compliance_status: Optional[str] = None
+    compliance_reason: Optional[str] = None
     status: str = "active"
     cost: Optional[Decimal] = None
     currency_code: Optional[str] = None
@@ -1182,8 +1216,15 @@ class SoftwareAssignmentCreate(BlankOptionalFieldsMixin, BaseModel):
     computer_id: Optional[UUID] = None
     asset_id: Optional[UUID] = None
     assigned_date: Optional[date] = None
+    planned_end_date: Optional[date] = None
+    shift_id: Optional[UUID] = None
+    start_time: Optional[str] = Field(default=None, max_length=5)
+    end_time: Optional[str] = Field(default=None, max_length=5)
+    purpose: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
     department: Optional[str] = Field(default=None, max_length=100)
+    force_override: bool = False
+    override_reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class SoftwareAssignmentUnassignRequest(BlankOptionalFieldsMixin, BaseModel):
@@ -1224,6 +1265,15 @@ class SoftwareAssignmentRead(TimestampSchema):
     asset_id: Optional[UUID] = None
     assigned_date: Optional[date] = None
     released_date: Optional[date] = None
+    planned_end_date: Optional[date] = None
+    shift_id: Optional[UUID] = None
+    shift_name: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    window_label: Optional[str] = None
+    allocation_kind: Optional[str] = None
+    purpose: Optional[str] = None
+    override_reason: Optional[str] = None
     notes: Optional[str] = None
     department: Optional[str] = None
     is_active: bool = True

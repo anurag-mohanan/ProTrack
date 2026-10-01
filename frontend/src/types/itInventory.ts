@@ -282,17 +282,28 @@ export interface SeatRequirementConfig {
 }
 
 export interface AvailabilitySlot {
-  shift_id: string;
+  shift_id: string | null;
   shift_code: string;
   shift_display: string;
+  window?: string;
   status: string;
   reason?: string | null;
+  reason_code?: string;
   assignee_name?: string | null;
+}
+
+export interface PeripheralAvailabilityRow {
+  role: string;
+  label: string;
+  total: number;
+  available_by_shift: Record<string, number>;
 }
 
 export interface ComputerAvailability {
   on_date: string;
-  shifts: { shift_id: string; shift_code: string; shift_display: string }[];
+  custom_window?: string | null;
+  peripherals?: PeripheralAvailabilityRow[];
+  shifts: { shift_id: string | null; shift_code: string; shift_display: string }[];
   summary: { seat_type: string; label: string; total: number; by_shift: Record<string, number> }[];
   computers: {
     asset_id: string;

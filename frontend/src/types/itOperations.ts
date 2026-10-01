@@ -86,7 +86,25 @@ export interface ITDashboardSummary {
   license_seats_total?: number;
   license_seats_assigned?: number;
   license_seats_available?: number;
+  license_authorized_users?: number;
+  license_active_usage?: number;
+  license_compliance_issues?: number;
+  license_metric_unconfigured?: number;
+  license_site_pools?: number;
+  computers_free_any_shift?: number;
+  legacy_assignments_review?: number;
+  capacity_by_shift?: ShiftCapacityRow[];
   recent_movements?: ITAssetMovement[];
+}
+
+export interface ShiftCapacityRow {
+  shift_code: string;
+  shift_display: string;
+  workstations: number;
+  laptops: number;
+  monitors: number;
+  mouse_3d: number;
+  license_rights: number;
 }
 
 export interface ITAssetMovement {
@@ -105,6 +123,8 @@ export interface AssetType {
   category: AssetTypeCategory;
   is_active: boolean;
   numbering_prefix?: string | null;
+  is_shareable?: boolean | null;
+  requires_shift?: boolean | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -471,6 +491,15 @@ export interface AssetAssignPayload {
   notes?: string | null;
   /** When set, enables shared-desk dual occupancy for that shift slot. */
   shift_id?: string | null;
+  /** Custom daily window (HH:MM); overrides the shift times. Overnight allowed. */
+  start_time?: string | null;
+  end_time?: string | null;
+  planned_end_date?: string | null;
+  purpose?: string | null;
+  assignment_type?: string | null;
+  reservation_id?: string | null;
+  force_override?: boolean;
+  override_reason?: string | null;
 }
 
 export type AssetBulkAction =
@@ -574,7 +603,16 @@ export interface AssetAssignment {
   shift_name?: string | null;
   shift_display?: string | null;
   assigned_date: string;
+  planned_end_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  window_label?: string | null;
+  needs_review?: boolean;
+  purpose?: string | null;
+  assignment_type?: string | null;
+  override_reason?: string | null;
   returned_date?: string | null;
+  released_at?: string | null;
   return_condition?: string | null;
   notes?: string | null;
   created_at?: string;
@@ -884,10 +922,27 @@ export interface ITProfileSoftwareStatus {
   status: string;
 }
 
+export interface ITProfileAllocation {
+  resource_type: 'asset' | 'license';
+  assignment_id: string;
+  resource_id: string;
+  resource_label: string;
+  category: string | null;
+  shareable: boolean;
+  window_label: string;
+  times: string | null;
+  shift_name: string | null;
+  legacy: boolean;
+  allocation_kind: 'scheduled' | 'all_hours' | 'authorization' | 'allocated';
+  shared_with: number;
+  dates: string;
+}
+
 export interface ITProfile {
   user_id: string;
   user_name?: string | null;
   assets: ITAsset[];
+  allocations?: ITProfileAllocation[];
   computers?: ITComputer[];
   computer?: ITProfileComputer | null;
   software?: ITProfileSoftware[];
@@ -1023,7 +1078,30 @@ export interface SoftwareLicensePool {
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
+  license_metric?: LicenseMetric | null;
+  license_metric_label?: string | null;
+  license_metric_rule?: string | null;
+  rights_allocated?: number | null;
+  rights_consumed?: number | null;
+  /** null = unlimited (site license). */
+  available_rights?: number | null;
+  authorized_users?: number | null;
+  scheduled_peak?: number | null;
+  active_usage?: number | null;
+  compliance_status?: LicenseComplianceStatus | null;
+  compliance_reason?: string | null;
 }
+
+export type LicenseMetric =
+  | 'NAMED_USER'
+  | 'PER_USER'
+  | 'PER_DEVICE'
+  | 'CONCURRENT'
+  | 'SITE'
+  | 'CUSTOM'
+  | 'UNSPECIFIED';
+
+export type LicenseComplianceStatus = 'COMPLIANT' | 'FULLY_ALLOCATED' | 'OVER_ALLOCATED' | 'EXPIRED';
 
 export interface SoftwareLicensePoolCreate {
   software_id: string;
@@ -1055,6 +1133,7 @@ export interface SoftwareLicensePoolUpdate {
   purchased_by?: string;
   owner_customer_id?: string | null;
   license_type?: SoftwareLicenseType | null;
+  assignment_model?: string | null;
   cost?: number | null;
   currency_code?: string | null;
   expiry_date?: string | null;
@@ -1073,7 +1152,17 @@ export interface SoftwareAssignment {
   computer_name?: string | null;
   asset_id?: string | null;
   assigned_date?: string | null;
+  planned_end_date?: string | null;
   released_date?: string | null;
+  shift_id?: string | null;
+  shift_name?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  window_label?: string | null;
+  /** scheduled = consumes a right in its window; authorization = floating, unscheduled; allocated = holds a right. */
+  allocation_kind?: 'scheduled' | 'authorization' | 'allocated' | null;
+  purpose?: string | null;
+  override_reason?: string | null;
   notes?: string | null;
   department?: string | null;
   is_active: boolean;
@@ -1087,6 +1176,13 @@ export interface SoftwareAssignmentCreate {
   computer_id?: string | null;
   asset_id?: string | null;
   assigned_date?: string | null;
+  planned_end_date?: string | null;
+  shift_id?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  purpose?: string | null;
+  force_override?: boolean;
+  override_reason?: string | null;
   notes?: string | null;
   department?: string | null;
 }

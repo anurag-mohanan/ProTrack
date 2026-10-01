@@ -562,6 +562,8 @@ def assign_package(
                 computer_id=computer_id,
                 assigned_date=on_date,
                 notes=notes,
+                shift_id=shift_id,
+                actor=actor,
                 commit=False,
             )
 

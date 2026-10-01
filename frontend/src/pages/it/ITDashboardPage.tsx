@@ -214,7 +214,7 @@ export function ITDashboardPage() {
               icon={SupportAgentRoundedIcon}
               accent="info"
               subtitle={`${unassignedRequests} unassigned`}
-              onClick={() => navigate('/it/requests')}
+              onClick={() => navigate('/it/requests?view=all&status=active')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -223,8 +223,8 @@ export function ITDashboardPage() {
               value={String(overdueRequests)}
               icon={AssignmentLateRoundedIcon}
               accent={overdueRequests > 0 ? 'error' : 'success'}
-              subtitle="Past Help Desk due date"
-              onClick={() => navigate('/it/requests?overdue=1')}
+              subtitle="Past due date or SLA"
+              onClick={() => navigate('/it/requests?view=overdue')}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -427,11 +427,13 @@ export function ITDashboardPage() {
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <KpiMetricCard
-                title="License seats"
+                title="License rights"
                 value={String(seatsTotal)}
                 icon={AppsRoundedIcon}
                 accent="info"
-                subtitle={`${seatsAssigned} assigned · ${seatsAvailable} available · ${licensePools} pools`}
+                subtitle={`${seatsAssigned} allocated · ${seatsAvailable} available · ${licensePools} pools${
+                  data?.license_site_pools ? ` · ${data.license_site_pools} site` : ''
+                }`}
                 onClick={() => navigate('/it/software?tab=licenses')}
               />
             </Grid>
@@ -451,6 +453,46 @@ export function ITDashboardPage() {
                 icon={EventBusyRoundedIcon}
                 accent="error"
                 onClick={() => navigate('/it/software?tab=expiry')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Authorized users"
+                value={String(data?.license_authorized_users ?? 0)}
+                icon={PersonOutlineRoundedIcon}
+                accent="primary"
+                subtitle="Employees allowed to use a licensed product"
+                onClick={() => navigate('/it/software?tab=assignments')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="In use now"
+                value={String(data?.license_active_usage ?? 0)}
+                icon={CheckCircleOutlineRoundedIcon}
+                accent="info"
+                subtitle="Open checkout sessions"
+                onClick={() => navigate('/it/software?tab=licenses')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Compliance issues"
+                value={String(data?.license_compliance_issues ?? 0)}
+                icon={WarningAmberRoundedIcon}
+                accent={(data?.license_compliance_issues ?? 0) > 0 ? 'error' : 'success'}
+                subtitle="Over-allocated or expired with assignments"
+                onClick={() => navigate('/it/allocation?view=legacy')}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <KpiMetricCard
+                title="Metric not set"
+                value={String(data?.license_metric_unconfigured ?? 0)}
+                icon={AssignmentLateRoundedIcon}
+                accent={(data?.license_metric_unconfigured ?? 0) > 0 ? 'warning' : 'success'}
+                subtitle="Pools without a license metric"
+                onClick={() => navigate('/it/allocation?view=legacy')}
               />
             </Grid>
           </Grid>
@@ -621,6 +663,53 @@ export function ITDashboardPage() {
                         {row.by_shift[s.shift_code] ?? 0}
                       </TableCell>
                     ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ContentCard>
+        ) : null}
+
+        {(data?.capacity_by_shift ?? []).length ? (
+          <ContentCard
+            title="Capacity by shift"
+            subtitle={`Free reusable resources per shift today. ${data?.computers_free_any_shift ?? 0} computer(s) free in at least one shift.${
+              data?.legacy_assignments_review
+                ? ` ${data.legacy_assignments_review} legacy assignment(s) without a shift are counted as all hours.`
+                : ''
+            }`}
+            action={
+              data?.legacy_assignments_review ? (
+                <Chip
+                  size="small"
+                  clickable
+                  color="warning"
+                  label="Review legacy assignments"
+                  onClick={() => navigate('/it/allocation?view=legacy')}
+                />
+              ) : undefined
+            }
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Shift</TableCell>
+                  <TableCell align="right">Workstations</TableCell>
+                  <TableCell align="right">Laptops</TableCell>
+                  <TableCell align="right">Monitors</TableCell>
+                  <TableCell align="right">3D mice</TableCell>
+                  <TableCell align="right">Free license rights</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(data?.capacity_by_shift ?? []).map((row) => (
+                  <TableRow key={row.shift_code}>
+                    <TableCell>{row.shift_display}</TableCell>
+                    <TableCell align="right">{row.workstations}</TableCell>
+                    <TableCell align="right">{row.laptops}</TableCell>
+                    <TableCell align="right">{row.monitors}</TableCell>
+                    <TableCell align="right">{row.mouse_3d}</TableCell>
+                    <TableCell align="right">{row.license_rights}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

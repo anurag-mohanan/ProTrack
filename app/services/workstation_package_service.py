@@ -42,6 +42,7 @@ from app.models.models import User
 from app.models.resource_shifts import ResourceShift
 from app.services import it_asset_service
 from app.services import it_provisioning_service as provisioning
+from app.services import resource_allocation_engine as allocation
 from app.services import resource_shift_service as shifts
 from app.services.activity_service import log_activity
 
@@ -126,74 +127,66 @@ def open_asset_assignments_on_date(
                     AssetAssignment.returned_date.is_(None),
                     AssetAssignment.returned_date > on_date,
                 ),
+                or_(
+                    AssetAssignment.planned_end_date.is_(None),
+                    AssetAssignment.planned_end_date >= on_date,
+                ),
             )
         ).all()
     )
 
 
-ASSIGNABLE_ASSET_STATUSES = frozenset({"available", "assigned"})
-_STATUS_REASONS = {
-    "maintenance": "In maintenance",
-    "reserved": "Reserved",
-    "awaiting_return": "Pending return",
-    "damaged": "Damaged",
-    "lost": "Lost",
-    "retired": "Retired",
-    "disposed": "Disposed",
-    "returned_to_customer": "Returned to customer",
+ASSIGNABLE_ASSET_STATUSES = allocation.ASSIGNABLE_ASSET_STATUSES
+
+_ENGINE_TO_SHIFT_STATUS = {
+    allocation.UNAVAILABLE: SHIFT_AVAIL_UNAVAILABLE,
+    allocation.ASSIGNED: SHIFT_AVAIL_ASSIGNED,
+    allocation.CONFLICT: SHIFT_AVAIL_CONFLICT,
+    allocation.RESERVED: SHIFT_AVAIL_UNAVAILABLE,
 }
 
 
 def evaluate_asset_shift(
+    db: Session,
     asset: Asset,
     target: ResourceShift,
     open_rows: list[AssetAssignment],
     *,
+    on_date: date,
     shift_lookup: dict[UUID, ResourceShift],
     name_lookup: dict[UUID, str | None],
+    reservations: list | None = None,
+    check_packages: bool = True,
 ) -> dict[str, Any] | None:
-    """The single shift-availability rule for a physical asset.
+    """Shift-slot view of the central allocation engine for one physical asset.
 
     Returns a blocking result (UNAVAILABLE / ASSIGNED / CONFLICT) or ``None`` when
-    lifecycle status and open assignments leave the asset free for ``target``.
-    Overlap uses ``startA < endB and startB < endA`` (overnight shifts split).
+    the asset is free for ``target`` on ``on_date``.
     """
-    if asset.is_deleted or asset.status not in ASSIGNABLE_ASSET_STATUSES:
-        label = _STATUS_REASONS.get(asset.status or "", asset.status)
-        return {
-            "status": SHIFT_AVAIL_UNAVAILABLE,
-            "reason": f"{asset.asset_number}: {label}",
-            "assignee_name": None,
-        }
-    for row in open_rows:
-        name = name_lookup.get(row.assigned_to_user_id)
-        if row.shift_id == target.id:
-            return {
-                "status": SHIFT_AVAIL_ASSIGNED,
-                "reason": f"Assigned to {name} on this shift",
-                "assignee_name": name,
-                "assignee_user_id": str(row.assigned_to_user_id),
-                "assignment_id": str(row.id),
-            }
-        if row.shift_id is None:
-            return {
-                "status": SHIFT_AVAIL_UNAVAILABLE,
-                "reason": f"Assigned to {name} for all hours (no shift)",
-                "assignee_name": name,
-                "assignee_user_id": str(row.assigned_to_user_id),
-            }
-        other = shift_lookup.get(row.shift_id)
-        if other is not None and provisioning.shift_windows_overlap(target, other):
-            return {
-                "status": SHIFT_AVAIL_CONFLICT,
-                "reason": (
-                    f"Overlaps {other.name} assignment to {name} "
-                    f"({other.start_time}–{other.end_time})"
-                ),
-                "assignee_name": name,
-                "assignee_user_id": str(row.assigned_to_user_id),
-            }
-    return None
+    request = allocation.AllocationRequest(
+        start_date=on_date, end_date=on_date, window=allocation.window_for_shift(target)
+    )
+    result = allocation.evaluate_asset(
+        db,
+        asset,
+        request,
+        rows=open_rows,
+        reservations=reservations,
+        shift_map=shift_lookup,
+        names={k: v for k, v in name_lookup.items() if v},
+        check_packages=check_packages,
+    )
+    if result["available"]:
+        return None
+    first = (result["conflicting_assignments"] or [{}])[0]
+    return {
+        "status": _ENGINE_TO_SHIFT_STATUS.get(result["status"], SHIFT_AVAIL_UNAVAILABLE),
+        "reason": result["reason"],
+        "reason_code": result["reason_code"],
+        "assignee_name": first.get("user_name"),
+        "assignee_user_id": first.get("user_id"),
+        "assignment_id": first.get("id"),
+    }
 
 
 def asset_shift_availability(
@@ -218,13 +211,10 @@ def asset_shift_availability(
     } if opens else {}
     name_lookup = {r.assigned_to_user_id: _full_name(db.get(User, r.assigned_to_user_id)) for r in opens}
     blocked = evaluate_asset_shift(
-        asset, target, opens, shift_lookup=shift_lookup, name_lookup=name_lookup
+        db, asset, target, opens, on_date=on_date, shift_lookup=shift_lookup, name_lookup=name_lookup
     )
     if blocked:
         return blocked
-    pkg_block = _package_blocks_asset(db, asset.id, shift_id=shift_id, on_date=on_date)
-    if pkg_block:
-        return pkg_block
     return {"status": SHIFT_AVAIL_AVAILABLE, "reason": None, "assignee_name": None}
 
 
@@ -941,45 +931,47 @@ def list_packages(
 
 
 def capacity_by_computer_type(db: Session, *, on_date: date | None = None) -> list[dict[str, Any]]:
+    """Computers per type × shift from the allocation engine (Resource Planning + IT).
+
+    Counts real computers and their time-bound assignments; incomplete = derived
+    Virtual Seats of that type missing a required component.
+    """
+    from app.services import it_availability_service
+    from app.services import virtual_seat_service
+
     when = on_date or date.today()
-    shifts.ensure_company_standard_shifts(db)
-    all_shifts = list(
-        db.scalars(select(ResourceShift).where(ResourceShift.is_active.is_(True))).all()
-    )
-    packages = list(
-        db.scalars(
-            select(WorkstationPackage).where(WorkstationPackage.status != PACKAGE_STATUS_RETIRED)
-        ).all()
-    )
+    matrix = it_availability_service.computer_availability(db, on_date=when)
+    seats = virtual_seat_service.derive_seats(db, on_date=when, include_no_primary=False)
+    incomplete: dict[str, int] = {}
+    for seat in seats:
+        if seat["setup_status"] == virtual_seat_service.SETUP_INCOMPLETE:
+            incomplete[seat["seat_type"]] = incomplete.get(seat["seat_type"], 0) + 1
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for computer in matrix["computers"]:
+        by_type.setdefault(computer["seat_type"], []).append(computer)
     out = []
-    for code, label in COMPUTER_TYPE_LABELS.items():
-        subset = [p for p in packages if p.computer_type == code]
+    for summary in matrix["summary"]:
+        code = summary["seat_type"]
+        subset = by_type.get(code, [])
         shift_stats = []
-        for sh in all_shifts:
-            available = 0
-            assigned = 0
-            for p in subset:
-                avail = package_shift_availability(db, p, shift_id=sh.id, on_date=when)
-                if avail["status"] == SHIFT_AVAIL_AVAILABLE:
-                    available += 1
-                elif avail["status"] in {SHIFT_AVAIL_ASSIGNED, SHIFT_AVAIL_CONFLICT}:
-                    assigned += 1
+        for sh in matrix["shifts"]:
+            slots = [s for c in subset for s in c["shifts"] if s["shift_code"] == sh["shift_code"]]
             shift_stats.append(
                 {
-                    "shift_id": str(sh.id),
-                    "shift_code": sh.code,
-                    "shift_name": sh.name,
-                    "available": available,
-                    "assigned": assigned,
+                    "shift_id": sh["shift_id"],
+                    "shift_code": sh["shift_code"],
+                    "shift_name": sh["shift_display"],
+                    "available": sum(1 for s in slots if s["status"] == SHIFT_AVAIL_AVAILABLE),
+                    "assigned": sum(1 for s in slots if s["status"] in {SHIFT_AVAIL_ASSIGNED, SHIFT_AVAIL_CONFLICT}),
                 }
             )
         out.append(
             {
                 "computer_type": code,
-                "label": label,
-                "total": len(subset),
-                "maintenance": sum(1 for p in subset if p.status == PACKAGE_STATUS_MAINTENANCE),
-                "incomplete": sum(1 for p in subset if p.status == PACKAGE_STATUS_INCOMPLETE),
+                "label": summary["label"],
+                "total": summary["total"],
+                "maintenance": sum(1 for c in subset if c["status"] == "maintenance"),
+                "incomplete": incomplete.get(code, 0),
                 "shifts": shift_stats,
             }
         )

@@ -13,6 +13,8 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ADMIN_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { FormField, FormSelect } from '../../components/ui/design-system';
@@ -26,6 +28,7 @@ import {
   canManageItSettings,
 } from '../../utils/permissions';
 import { ITMigrationPanel } from '../../components/it/ITMigrationPanel';
+import { SharingPolicyCard } from '../../components/it/allocation/SharingPolicyCard';
 
 type SettingsFormState = {
   asset_numbering_pattern: string;
@@ -122,6 +125,7 @@ export function ITSettingsPage() {
     return (
       <PageContainer>
         <PageHeader title="IT Settings" subtitle="Naming and allocation conventions." />
+        <ITAreaTabs items={IT_ADMIN_AREA_TABS} />
         <ErrorState error={new Error('You do not have permission to manage IT settings.')} />
       </PageContainer>
     );
@@ -232,6 +236,10 @@ export function ITSettingsPage() {
           />
         </Box>
       </ContentCard>
+
+      <Box sx={{ mt: 3 }}>
+        <SharingPolicyCard canEdit={canManage} />
+      </Box>
 
       <Box sx={{ mt: 3 }}>
         <ContentCard title="Data Import">

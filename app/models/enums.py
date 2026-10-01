@@ -219,6 +219,12 @@ class ActivityAction(enum.Enum):
     ticket_resolved = "ticket_resolved"
     ticket_closed = "ticket_closed"
     ticket_reopened = "ticket_reopened"
+    ticket_cancelled = "ticket_cancelled"
+    ticket_transferred = "ticket_transferred"
+    ticket_escalated = "ticket_escalated"
+    ticket_linked = "ticket_linked"
+    ticket_routing_changed = "ticket_routing_changed"
+    ticket_reviewed = "ticket_reviewed"
     it_asset_created = "it_asset_created"
     it_asset_updated = "it_asset_updated"
     it_asset_deleted = "it_asset_deleted"
@@ -254,6 +260,7 @@ class ActivityAction(enum.Enum):
     it_resource_package_assigned = "it_resource_package_assigned"
     onboarding_task_status_changed = "onboarding_task_status_changed"
     onboarding_task_request_linked = "onboarding_task_request_linked"
+    onboarding_template_updated = "onboarding_template_updated"
     it_virtual_seat_created = "it_virtual_seat_created"
     it_virtual_seat_primary_changed = "it_virtual_seat_primary_changed"
     it_virtual_seat_components_changed = "it_virtual_seat_components_changed"
@@ -266,6 +273,16 @@ class ActivityAction(enum.Enum):
     it_stock_alert_raised = "it_stock_alert_raised"
     it_stock_alert_resolved = "it_stock_alert_resolved"
     it_restock_request_changed = "it_restock_request_changed"
+    it_license_assigned = "it_license_assigned"
+    it_license_released = "it_license_released"
+    it_license_checked_out = "it_license_checked_out"
+    it_license_checked_in = "it_license_checked_in"
+    it_license_metric_changed = "it_license_metric_changed"
+    it_reservation_created = "it_reservation_created"
+    it_reservation_released = "it_reservation_released"
+    it_assignment_reviewed = "it_assignment_reviewed"
+    it_sharing_policy_updated = "it_sharing_policy_updated"
+    it_setup_assigned = "it_setup_assigned"
 
 
 class NotificationType(enum.Enum):
@@ -284,6 +301,14 @@ class NotificationType(enum.Enum):
     new_hire_onboarding = "new_hire_onboarding"
     training_assigned = "training_assigned"
     it_low_stock = "it_low_stock"
+    ticket_assigned = "ticket_assigned"
+    ticket_status_changed = "ticket_status_changed"
+    ticket_comment = "ticket_comment"
+    ticket_due_soon = "ticket_due_soon"
+    ticket_overdue = "ticket_overdue"
+    ticket_escalated = "ticket_escalated"
+    ticket_needs_owner = "ticket_needs_owner"
+    onboarding_task_update = "onboarding_task_update"
 
 
 class WorkingModelCode(enum.Enum):
@@ -334,6 +359,9 @@ class EntityType(enum.Enum):
     it_virtual_seat = "it_virtual_seat"
     it_stock_item = "it_stock_item"
     it_restock_request = "it_restock_request"
+    it_license_pool = "it_license_pool"
+    it_reservation = "it_reservation"
+    onboarding_template = "onboarding_template"
 
 
 class CostNature(enum.Enum):

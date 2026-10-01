@@ -574,17 +574,24 @@ def computers_availability(
     on_date: date | None = Query(None),
     seat_type: str | None = Query(None),
     shift_id: UUID | None = Query(None),
+    start_time: str | None = Query(None, max_length=5),
+    end_time: str | None = Query(None, max_length=5),
     only_available: bool = Query(False),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _require_view(db, current_user)
-    return availability.computer_availability(
-        db,
-        on_date=on_date,
-        seat_type=seat_type,
-        shift_id=shift_id,
-        only_available=only_available,
-        search=search,
-    )
+    try:
+        return availability.computer_availability(
+            db,
+            on_date=on_date,
+            seat_type=seat_type,
+            shift_id=shift_id,
+            start_time=start_time,
+            end_time=end_time,
+            only_available=only_available,
+            search=search,
+        )
+    except ProTrackValidationError as exc:
+        raise _fail(exc) from exc

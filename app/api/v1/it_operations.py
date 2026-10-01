@@ -151,6 +151,7 @@ from app.services import (
     it_people_service,
     it_reset_service,
     it_software_service,
+    resource_assignment_service,
     resource_it_gap_service,
     resource_package_service,
 )
@@ -190,6 +191,18 @@ def _require_it_access(db: Session, user: User) -> None:
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Requires IT Operations module or view_it_operations permission.",
     )
+
+
+def _override_allowed(db: Session, user: User, requested: bool) -> bool:
+    """Conflict overrides need manage permission (plus a reason, checked by the engine)."""
+    if not requested:
+        return False
+    if not user_has_special(user, _role_name(db, user), SPECIAL_MANAGE_IT_ASSETS):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Overriding a schedule conflict requires the manage IT assets permission.",
+        )
+    return True
 
 
 def _require_reports(db: Session, user: User) -> None:
@@ -380,18 +393,23 @@ def _asset_read(
 
 
 def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
+    from app.models.resource_shifts import ResourceShift
+    from app.services import resource_allocation_engine as engine
+
     to_user = db.get(User, row.assigned_to_user_id)
     by_user = db.get(User, row.assigned_by_user_id)
     shift_code = shift_name = shift_display = None
+    shift_map: dict = {}
     if getattr(row, "shift_id", None):
-        from app.models.resource_shifts import ResourceShift
         from app.services import resource_shift_service
 
         shift = db.get(ResourceShift, row.shift_id)
         if shift is not None:
+            shift_map[shift.id] = shift
             shift_code = shift.code
             shift_name = shift.name
             shift_display = resource_shift_service.format_shift_label(shift)
+    window = engine.window_for_row(row, shift_map)
     return AssetAssignmentRead(
         id=row.id,
         created_at=row.created_at,
@@ -408,8 +426,16 @@ def _assignment_read(db: Session, row: AssetAssignment) -> AssetAssignmentRead:
         assignment_type=getattr(row, "assignment_type", None),
         override_reason=getattr(row, "override_reason", None),
         assigned_date=row.assigned_date,
+        planned_end_date=row.planned_end_date,
+        start_time=row.start_time,
+        end_time=row.end_time,
+        window_label=window.label,
+        needs_review=window.legacy and row.returned_date is None,
+        purpose=row.purpose,
         returned_date=row.returned_date,
         return_condition=row.return_condition,
+        released_by_user_id=row.released_by_user_id,
+        released_at=row.released_at,
         notes=row.notes,
     )
 
@@ -701,6 +727,7 @@ def _profile_for_user(db: Session, user_id: UUID) -> ITProfileRead:
         primary_tool=snapshot.get("primary_tool"),
         primary_tool_source=snapshot.get("primary_tool_source"),
         software_status=snapshot.get("software_status") or [],
+        allocations=resource_assignment_service.user_allocations(db, user_id),
     )
 
 
@@ -1592,8 +1619,13 @@ def assign_asset(
             notes=payload.notes,
             shift_id=payload.shift_id,
             assignment_type=payload.assignment_type,
-            force_override=payload.force_override,
+            force_override=_override_allowed(db, current_user, payload.force_override),
             override_reason=payload.override_reason,
+            planned_end_date=payload.planned_end_date,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+            purpose=payload.purpose,
+            reservation_id=payload.reservation_id,
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -2012,6 +2044,15 @@ def assign_computer(
             by_user=current_user,
             assigned_date=payload.assigned_date,
             notes=payload.notes,
+            shift_id=payload.shift_id,
+            assignment_type=payload.assignment_type,
+            force_override=_override_allowed(db, current_user, payload.force_override),
+            override_reason=payload.override_reason,
+            planned_end_date=payload.planned_end_date,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+            purpose=payload.purpose,
+            reservation_id=payload.reservation_id,
         )
         return _assignment_read(db, row)
     except ProTrackValidationError as exc:
@@ -2421,10 +2462,24 @@ def _software_read(row: SoftwareCatalog) -> SoftwareCatalogRead:
 
 
 def _license_pool_read(db: Session, pool: SoftwareLicensePool) -> SoftwareLicensePoolRead:
+    from app.services import resource_allocation_engine as allocation
+
     soft = it_software_service.get_software(db, pool.software_id)
     assigned = it_software_service.count_active_assignments(db, pool.id)
     available = it_software_service.available_seats(db, pool)
+    summary = allocation.license_summary(db, pool)
     return SoftwareLicensePoolRead(
+        license_metric=summary["metric"],
+        license_metric_label=summary["metric_label"],
+        license_metric_rule=summary["metric_rule"],
+        rights_allocated=summary["rights_allocated"],
+        rights_consumed=summary["rights_consumed"],
+        available_rights=summary["available_rights"],
+        authorized_users=summary["authorized_users"],
+        scheduled_peak=summary["scheduled_peak"],
+        active_usage=summary["active_usage"],
+        compliance_status=summary["compliance_status"],
+        compliance_reason=summary["compliance_reason"],
         id=pool.id,
         created_at=pool.created_at,
         updated_at=pool.updated_at,
@@ -2462,10 +2517,17 @@ def _license_pool_read(db: Session, pool: SoftwareLicensePool) -> SoftwareLicens
 
 
 def _assignment_software_read(db: Session, row: SoftwareAssignment) -> SoftwareAssignmentRead:
+    from app.models.resource_shifts import ResourceShift
+    from app.services import resource_allocation_engine as allocation
+
     pool = it_software_service.get_license_pool(db, row.license_pool_id)
     soft = it_software_service.get_software(db, pool.software_id) if pool else None
     user = db.get(User, row.user_id) if row.user_id else None
     computer = db.get(Computer, row.computer_id) if row.computer_id else None
+    shift = db.get(ResourceShift, row.shift_id) if row.shift_id else None
+    window = allocation.window_for_row(row, {shift.id: shift} if shift else {})
+    scheduled = allocation.is_scheduled(row)
+    metric = allocation.license_metric(pool) if pool else allocation.METRIC_UNSPECIFIED
     return SoftwareAssignmentRead(
         id=row.id,
         created_at=row.created_at,
@@ -2480,6 +2542,19 @@ def _assignment_software_read(db: Session, row: SoftwareAssignment) -> SoftwareA
         asset_id=row.asset_id,
         assigned_date=row.assigned_date,
         released_date=row.released_date,
+        planned_end_date=row.planned_end_date,
+        shift_id=row.shift_id,
+        shift_name=window.shift_name,
+        start_time=row.start_time,
+        end_time=row.end_time,
+        window_label=window.label if scheduled else None,
+        allocation_kind=(
+            "scheduled" if scheduled
+            else "authorization" if metric == allocation.METRIC_CONCURRENT
+            else "allocated"
+        ),
+        purpose=row.purpose,
+        override_reason=row.override_reason,
         notes=row.notes,
         department=row.department,
         is_active=row.released_date is None,
@@ -2715,12 +2790,14 @@ def update_software_license(
             purchased_by=payload.purchased_by,
             owner_customer_id=payload.owner_customer_id,
             license_type=payload.license_type,
+            assignment_model=payload.assignment_model,
             cost=payload.cost,
             currency_code=payload.currency_code,
             expiry_date=payload.expiry_date,
             renewal_mode=payload.renewal_mode,
             notes=payload.notes,
             fields_set=set(payload.model_fields_set),
+            actor=current_user,
         )
         return _license_pool_read(db, updated)
     except ProTrackValidationError as exc:
@@ -2832,6 +2909,14 @@ def create_software_assignment(
             assigned_date=payload.assigned_date,
             notes=payload.notes,
             department=payload.department,
+            shift_id=payload.shift_id,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+            planned_end_date=payload.planned_end_date,
+            purpose=payload.purpose,
+            actor=current_user,
+            force_override=_override_allowed(db, current_user, payload.force_override),
+            override_reason=payload.override_reason,
         )
         return _assignment_software_read(db, row)
     except ProTrackValidationError as exc:
@@ -2857,6 +2942,7 @@ def unassign_software_assignment(
             db,
             row,
             released_date=payload.released_date if payload else None,
+            actor=current_user,
         )
         return _assignment_software_read(db, updated)
     except ProTrackValidationError as exc:

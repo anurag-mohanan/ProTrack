@@ -65,6 +65,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/it': 'IT Dashboard',
   '/it/assets': 'Assets & Inventory',
   '/it/virtual-seats': 'Virtual Seats',
+  '/it/allocation': 'Reservations & Review',
   '/it/inventory': 'Inventory',
   '/it/returned-assets': 'Returned / Pending Return',
   '/it/computers': 'Computer NICs',
@@ -143,6 +144,13 @@ function resolveBreadcrumbs(pathname: string, projectLabel?: string | null): Bre
       { label: 'System Administration', to: '/admin/dashboard' },
       { label: 'System Settings', to: '/admin/settings' },
       { label: ROUTE_LABELS[pathname] ?? 'Settings' },
+    ];
+  }
+
+  if (pathname.startsWith('/help-desk/tickets/')) {
+    return [
+      { label: 'Help Desk', to: '/help-desk' },
+      { label: 'Ticket' },
     ];
   }
 

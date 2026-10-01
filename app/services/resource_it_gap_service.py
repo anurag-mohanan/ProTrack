@@ -28,42 +28,13 @@ from app.models.resource_shifts import ResourceShift
 from app.services.it_software_service import available_seats
 from app.services import resource_shift_service as shift_service
 
-# License types where a seat is shared over time rather than bound to a person.
-FLOATING_LICENSE_TYPES = frozenset({"floating", "concurrent", "network"})
-
 EXPIRING_SOON_DAYS = 30
-_DEFAULT_DAY_START_MIN = 9 * 60
-_DEFAULT_DAY_END_MIN = 18 * 60
+# People without a resolved shift are treated as general daytime so demand is not understated.
+_DEFAULT_WINDOW = ("09:00", "18:00")
 
 
 def _full_name(user: User) -> str:
     return f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.email or "")
-
-
-def _minutes_of(hhmm: str) -> int:
-    parts = str(hhmm or "00:00").split(":")
-    try:
-        hour = int(parts[0])
-        minute = int(parts[1]) if len(parts) > 1 else 0
-    except (TypeError, ValueError):
-        return 0
-    return max(0, min(hour, 23)) * 60 + max(0, min(minute, 59))
-
-
-def _shift_intervals_minutes(shift: ResourceShift | None) -> list[tuple[int, int]]:
-    """Return half-open minute intervals covered by a shift within a 24h day."""
-    if shift is None:
-        return [(_DEFAULT_DAY_START_MIN, _DEFAULT_DAY_END_MIN)]
-    start = _minutes_of(shift.start_time)
-    end = _minutes_of(shift.end_time)
-    if end <= start or bool(shift.is_overnight):
-        intervals: list[tuple[int, int]] = []
-        if start < 24 * 60:
-            intervals.append((start, 24 * 60))
-        if end > 0:
-            intervals.append((0, end))
-        return intervals or [(_DEFAULT_DAY_START_MIN, _DEFAULT_DAY_END_MIN)]
-    return [(start, end)]
 
 
 def estimate_floating_peak(
@@ -74,34 +45,28 @@ def estimate_floating_peak(
 ) -> int:
     """Max concurrent presence for ``user_ids`` on ``on_date`` from shift windows.
 
-    People without a resolved shift are treated as general daytime (09:00–18:00)
-    so demand is not understated.
+    Uses the allocation engine's window normalisation and peak rule, so abutting
+    shifts (06:00–14:00 / 14:00–22:00) share one concurrent right.
     """
+    from app.services import resource_allocation_engine as allocation
+
     if not user_ids:
         return 0
     resolved = shift_service.resolve_shifts_for_range(db, user_ids, on_date, on_date)
-    events: list[tuple[int, int]] = []
+    windows = []
     for user_id in user_ids:
         shift = resolved.get(user_id, {}).get(on_date)
-        for start, end in _shift_intervals_minutes(shift):
-            if end > start:
-                events.append((start, 1))
-                events.append((end, -1))
-    if not events:
-        return 0
-    # Process releases before starts at the same minute so abutting shifts do not stack.
-    events.sort(key=lambda item: (item[0], item[1]))
-    current = 0
-    peak = 0
-    for _, delta in events:
-        current += delta
-        if current > peak:
-            peak = current
-    return peak
+        windows.append(
+            allocation.window_for_shift(shift) if shift is not None
+            else allocation.window_from_times(*_DEFAULT_WINDOW)
+        )
+    return allocation.peak_concurrency(windows)
 
 
 def is_floating_license_type(license_type: str | None) -> bool:
-    return (license_type or "").strip().lower() in FLOATING_LICENSE_TYPES
+    from app.services import resource_allocation_engine as allocation
+
+    return allocation._METRIC_BY_CODE.get((license_type or "").strip().lower()) == allocation.METRIC_CONCURRENT
 
 
 def _active_user_stmt():
@@ -170,24 +135,30 @@ def _computer_assignment_map(db: Session, on_date: date) -> dict[UUID, dict]:
 
 
 def get_computer_availability(db: Session, on_date: date | None = None) -> dict:
-    """Free vs assigned computers, derived from Computer/Asset/AssetAssignment."""
+    """Computers with at least one free shift ("spare") vs in use, via the allocation engine.
+
+    A shared workstation used in First shift but free in Second counts as both in
+    use and spare — shift capacity, not "one computer = one user".
+    """
+    from app.services import resource_allocation_engine as allocation
+
     on_date = on_date or date.today()
+    shift_service.ensure_company_standard_shifts(db)
+    active_shifts = list(db.scalars(select(ResourceShift).where(ResourceShift.is_active.is_(True))).all())
     computers = db.execute(
         select(Computer, Asset)
         .join(Asset, Asset.id == Computer.asset_id)
         .where(Asset.is_deleted.is_(False))
     ).all()
-    assigned_asset_ids = set(
-        db.scalars(
-            select(AssetAssignment.asset_id).where(
-                AssetAssignment.assigned_date <= on_date,
-                or_(
-                    AssetAssignment.returned_date.is_(None),
-                    AssetAssignment.returned_date > on_date,
-                ),
-            )
-        ).all()
-    )
+    rows_by_asset: dict[UUID, list[AssetAssignment]] = {}
+    for row in db.scalars(
+        select(AssetAssignment).where(
+            AssetAssignment.assigned_date <= on_date,
+            or_(AssetAssignment.returned_date.is_(None), AssetAssignment.returned_date > on_date),
+        )
+    ).all():
+        if allocation.dates_overlap(*allocation._row_dates(row), on_date, on_date):
+            rows_by_asset.setdefault(row.asset_id, []).append(row)
 
     total = 0
     assigned = 0
@@ -195,17 +166,33 @@ def get_computer_availability(db: Session, on_date: date | None = None) -> dict:
     unavailable = 0
     for computer, asset in computers:
         total += 1
-        if asset.id in assigned_asset_ids:
+        occupants = rows_by_asset.get(asset.id, [])
+        if occupants:
             assigned += 1
-        elif asset.status in {"retired", "disposed", "maintenance", "awaiting_return"}:
+        if asset.status not in allocation.ASSIGNABLE_ASSET_STATUSES:
             unavailable += 1
-        else:
+            continue
+        free_shifts = [
+            shift.code
+            for shift in active_shifts
+            if allocation.evaluate_asset(
+                db,
+                asset,
+                allocation.AllocationRequest(
+                    start_date=on_date, end_date=on_date, window=allocation.window_for_shift(shift)
+                ),
+                rows=occupants,
+                check_packages=False,
+            )["available"]
+        ]
+        if free_shifts:
             spare.append(
                 {
                     "computer_id": computer.id,
                     "computer_name": computer.computer_name,
                     "asset_number": asset.asset_number,
                     "status": asset.status,
+                    "free_shifts": free_shifts,
                 }
             )
     return {
@@ -269,20 +256,23 @@ def get_license_availability(db: Session) -> list[dict]:
         .order_by(SoftwareCatalog.name)
     ).all()
 
+    from app.services import resource_allocation_engine as allocation
+
     pools: list[dict] = []
     for pool, software in rows:
         free = available_seats(db, pool)
         seats = int(pool.seat_count or 0)
-        license_type = (pool.license_type or "").strip().lower()
+        summary = allocation.license_summary(db, pool)
         pools.append(
             {
                 "pool_id": pool.id,
                 "software_id": pool.software_id,
                 "software_name": software.name,
                 "license_type": pool.license_type,
-                "is_floating": license_type in FLOATING_LICENSE_TYPES,
+                "license_metric": summary["metric"],
+                "is_floating": summary["metric"] == allocation.METRIC_CONCURRENT,
                 "seat_count": seats,
-                "assigned_seats": seats - free,
+                "assigned_seats": summary["rights_allocated"],
                 "available_seats": free,
                 "expiry_date": pool.expiry_date,
                 "is_expired": pool.expiry_date is not None and pool.expiry_date < today,

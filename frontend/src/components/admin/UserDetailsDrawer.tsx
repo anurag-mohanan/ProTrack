@@ -20,6 +20,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
+import ConfirmationNumberOutlinedIcon from '@mui/icons-material/ConfirmationNumberOutlined';
 import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded';
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined';
@@ -40,6 +41,7 @@ import {
 import { ProsohmButton } from '../ui/ProsohmButton';
 import { LoadingState } from '../common/LoadingState';
 import { ITProfilePanel } from '../it/ITProfilePanel';
+import { EmployeeTicketsSection } from '../tickets/EmployeeTicketsSection';
 import { Employee360Panel } from './Employee360Panel';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -351,6 +353,12 @@ export function UserDetailsDrawer({
               </Grid>
             </FormSection>
           ) : null}
+
+          <FormSection title="Tickets" icon={ConfirmationNumberOutlinedIcon}>
+            <Grid size={{ xs: 12 }}>
+              <EmployeeTicketsSection userId={user.id} />
+            </Grid>
+          </FormSection>
 
           <FormSection title="Assigned Projects" icon={BadgeOutlinedIcon}>
             {projectsQuery.isPending ? (

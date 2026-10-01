@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -1409,14 +1409,25 @@ def assign_asset(
     assignment_type: str | None = None,
     force_override: bool = False,
     override_reason: str | None = None,
+    planned_end_date: date | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    purpose: str | None = None,
+    reservation_id: UUID | None = None,
     commit: bool = True,
 ) -> AssetAssignment:
+    """Create a time-bound assignment after the allocation engine approves it.
+
+    The asset row is locked first so two simultaneous requests for the same slot
+    serialise; the second re-reads committed assignments and is rejected.
+    """
     from app.models.it_operations import (
         ASSIGNMENT_TYPE_PRIMARY,
         ASSIGNMENT_TYPE_SHIFT_SHARED,
         ASSET_ASSIGNMENT_TYPES,
+        ResourceReservation,
     )
-    from app.services import it_provisioning_service as provisioning
+    from app.services import resource_allocation_engine as engine
 
     if asset.is_deleted:
         raise ProTrackValidationError("Cannot assign a deleted asset.")
@@ -1424,7 +1435,7 @@ def assign_asset(
         raise ProTrackValidationError(
             f"Cannot assign an asset with status '{asset.status}'."
         )
-    if asset.status not in {"available", "assigned"}:
+    if asset.status not in engine.ASSIGNABLE_ASSET_STATUSES:
         raise ProTrackValidationError(
             f"Asset must be available or assigned to add an occupant "
             f"(current status: {asset.status})."
@@ -1434,80 +1445,77 @@ def assign_asset(
     if resolved_type and resolved_type not in ASSET_ASSIGNMENT_TYPES:
         raise ProTrackValidationError(f"Invalid assignment_type: {resolved_type}")
 
-    open_rows = list_open_assignments(db, asset.id)
-    is_laptop = provisioning.asset_is_laptop(db, asset)
-
-    if shift_id is None:
-        if open_rows:
-            raise ProTrackValidationError(
-                "Asset already has an open assignment. "
-                "Provide shift_id for shared-desk occupancy, or return the current user first."
-            )
-        resolved_type = resolved_type or ASSIGNMENT_TYPE_PRIMARY
-    else:
-        from app.models.resource_shifts import ResourceShift
-
-        shift = db.get(ResourceShift, shift_id)
-        if shift is None or not shift.is_active:
-            raise ProTrackValidationError("Shift not found or inactive.")
-        if any(row.shift_id is None for row in open_rows):
-            raise ProTrackValidationError(
-                "Asset has a legacy open assignment without a shift. "
-                "Return it before creating shared-desk slots."
-            )
-        if any(row.shift_id == shift_id for row in open_rows):
-            raise ProTrackValidationError(
-                "This asset already has an open assignment for that shift."
-            )
-
-        # Laptops default to single occupant unless explicitly shared
-        if is_laptop and open_rows and resolved_type != ASSIGNMENT_TYPE_SHIFT_SHARED:
-            raise ProTrackValidationError(
-                "Laptops normally have one active user. "
-                "Set assignment_type=SHIFT_SHARED to allow shift sharing."
-            )
-
-        conflicts = provisioning.find_shift_time_conflicts(
-            db, asset_id=asset.id, shift_id=shift_id
-        )
-        if conflicts:
-            if not force_override:
-                raise ProTrackValidationError(
-                    provisioning.CONFLICT_MSG,
-                    status_code=409,
-                )
-            if not (override_reason or "").strip():
-                raise ProTrackValidationError(
-                    "override_reason is required when forcing a shift schedule conflict."
-                )
-        resolved_type = resolved_type or ASSIGNMENT_TYPE_SHIFT_SHARED
-
     user = db.get(User, user_id)
     if user is None or user.is_deleted:
         raise ProTrackValidationError("Assignee user not found.")
+
+    engine.lock_resource(db, asset)
     when = assigned_date or date.today()
+    request = engine.build_request(
+        db,
+        start_date=when,
+        end_date=planned_end_date,
+        shift_id=shift_id,
+        start_time=start_time,
+        end_time=end_time,
+        user_id=user_id,
+        reservation_id=reservation_id,
+    )
+    result = engine.evaluate_asset(db, asset, request)
+    if result["reason_code"] == engine.REASON_ALREADY_HOLDS:
+        raise ProTrackValidationError(result["reason"], status_code=409)
+    engine.raise_if_blocked(result, override=force_override, override_reason=override_reason)
+    overridden = not result["available"]
+
+    window = request.window
+    if shift_id is not None or not window.all_day:
+        resolved_type = resolved_type or ASSIGNMENT_TYPE_SHIFT_SHARED
+    resolved_type = resolved_type or ASSIGNMENT_TYPE_PRIMARY
     assignment = AssetAssignment(
         id=uuid4(),
         asset_id=asset.id,
         assigned_to_user_id=user_id,
         assigned_by_user_id=by_user.id,
         shift_id=shift_id,
-        assignment_type=resolved_type or ASSIGNMENT_TYPE_PRIMARY,
-        override_reason=(override_reason or "").strip() or None,
+        # Explicit window: custom times, or "all hours" when no shift was chosen so
+        # new rows are never mistaken for legacy assignments needing review.
+        start_time=(start_time or None) if (start_time or shift_id) else "00:00",
+        end_time=(end_time or None) if (end_time or shift_id) else "24:00",
+        planned_end_date=planned_end_date,
+        purpose=(purpose or "").strip() or None,
+        assignment_type=resolved_type,
+        override_reason=(override_reason or "").strip() or None if overridden else None,
         assigned_date=when,
         notes=(notes or "").strip() or None,
     )
     prev_status = asset.status
-    asset.status = "assigned"
+    if when <= date.today():
+        asset.status = "assigned"
     db.add(assignment)
     db.add(asset)
     db.flush()
-    if prev_status != "assigned":
+    if prev_status != asset.status:
         prev = _current_status_period(db, asset.id)
         _end_open_period(prev, on_date=when)
         if prev is not None:
             db.add(prev)
         _open_status_period(db, asset, actor=by_user, on_date=when)
+
+    fulfilled = []
+    for res in db.scalars(
+        select(ResourceReservation).where(
+            ResourceReservation.asset_id == asset.id,
+            ResourceReservation.status == "ACTIVE",
+            or_(ResourceReservation.id == reservation_id, ResourceReservation.user_id == user_id),
+        )
+    ).all():
+        res.status = "FULFILLED"
+        res.released_by_user_id = by_user.id
+        res.released_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        res.release_reason = "Fulfilled by assignment"
+        db.add(res)
+        fulfilled.append(str(res.id))
+
     from app.services import virtual_seat_service
 
     virtual_seat_service.sync_seats(db, actor=by_user, user_ids={user_id})
@@ -1521,9 +1529,14 @@ def assign_asset(
             "asset_number": asset.asset_number,
             "assigned_to_user_id": str(user_id),
             "assigned_date": str(when),
+            "planned_end_date": str(planned_end_date) if planned_end_date else None,
             "shift_id": str(shift_id) if shift_id else None,
+            "window": window.label,
             "assignment_type": assignment.assignment_type,
+            "purpose": assignment.purpose,
             "override_reason": assignment.override_reason,
+            "overridden_conflict": result["reason"] if overridden else None,
+            "fulfilled_reservations": fulfilled,
         },
         outcome="success",
         module=MODULE,
@@ -1570,6 +1583,8 @@ def return_asset(
 
     when = returned_date or date.today()
     assignment.returned_date = when
+    assignment.released_by_user_id = by_user.id
+    assignment.released_at = datetime.now(timezone.utc).replace(tzinfo=None)
     assignment.return_condition = (return_condition or "").strip() or None
     if notes:
         assignment.notes = (

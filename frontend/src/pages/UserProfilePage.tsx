@@ -24,6 +24,7 @@ import { APP_TOP_BAR_OFFSET } from '../components/ui/design-system/StickyRecordH
 import { changePassword, fetchMyProfile, updateMyPreferences } from '../api/preferences';
 import { fetchMyItProfile, itOperationsKeys } from '../api/itOperations';
 import { ITProfilePanel } from '../components/it/ITProfilePanel';
+import { EmployeeTicketsSection } from '../components/tickets/EmployeeTicketsSection';
 import { useToast } from '../context/ToastContext';
 import { formatCellValue, formatNumber } from '../utils/format';
 import type { UserPreferences } from '../types/Preferences';
@@ -403,6 +404,11 @@ export default function UserProfilePage() {
                     loading={itProfileQuery.isLoading}
                     emptyMessage="You have no assigned IT assets, accounts, or IP allocations."
                   />
+                </FormSection>
+              ) : null}
+              {tab === 3 ? (
+                <FormSection title="My tickets">
+                  <EmployeeTicketsSection userId={profile.id} emptyMessage="You have no tickets." />
                 </FormSection>
               ) : null}
             </Box>

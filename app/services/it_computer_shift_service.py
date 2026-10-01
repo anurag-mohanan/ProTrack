@@ -1,7 +1,7 @@
 """Computers grouped by shift for Resource Planning.
 
-Uses existing AssetAssignment + get_employee_shift — no shared-desk master.
-Open computers are the shared pool available to any shift.
+Uses AssetAssignment windows evaluated by the central allocation engine.
+Open computers are those still free in at least one shift.
 """
 
 from __future__ import annotations
@@ -67,10 +67,20 @@ def computers_by_shift(
     on_date: date | None = None,
     team_id: UUID | None = None,
 ) -> dict:
-    """Availability and assignments bucketed by company shift masters."""
+    """Computers bucketed by shift; free/busy per slot comes from the allocation engine.
+
+    A shared workstation appears under every shift it is scheduled in (with that
+    shift's occupant) and in ``open_computers`` while any shift is still free.
+    """
+    from app.models.resource_shifts import ResourceShift
+    from app.services import it_availability_service
+    from app.services import resource_allocation_engine as allocation
+
     on_date = on_date or date.today()
     resource_shift_service.ensure_company_standard_shifts(db)
     shifts = resource_shift_service.list_shifts(db, active_only=True)
+    matrix = it_availability_service.computer_availability(db, on_date=on_date)
+    slots_by_asset = {row["asset_id"]: row["shifts"] for row in matrix["computers"]}
 
     computers = list(
         db.scalars(
@@ -79,6 +89,13 @@ def computers_by_shift(
             .order_by(Computer.computer_name)
         ).all()
     )
+    team_members: set[UUID] | None = None
+    if team_id is not None:
+        from app.models.models import TeamMember
+
+        team_members = set(db.scalars(select(User.id).where(User.team_id == team_id)).all())
+        team_members |= set(db.scalars(select(TeamMember.user_id).where(TeamMember.team_id == team_id)).all())
+    shift_map = {s.id: s for s in db.scalars(select(ResourceShift)).all()}
 
     open_rows: list[dict] = []
     maintenance_rows: list[dict] = []
@@ -92,51 +109,64 @@ def computers_by_shift(
         if asset is None or getattr(asset, "is_deleted", False):
             continue
         status = (asset.status or "").lower()
-        if status not in CURRENT_INVENTORY_STATUSES and status not in {
-            "retired",
-            "disposed",
-            "returned",
-        }:
+        if status not in CURRENT_INVENTORY_STATUSES and status not in {"retired", "disposed", "returned"}:
             continue
-
         row = _computer_row(db, computer, on_date=on_date)
-
-        if status == "available":
-            open_rows.append(row)
-            continue
+        slots = slots_by_asset.get(str(asset.id), [])
+        free = [s["shift_code"] for s in slots if s["status"] == "AVAILABLE"]
+        row["free_shifts"] = free
+        row["is_open"] = bool(free)
         if status == "maintenance":
             maintenance_rows.append(row)
             continue
         if status in {"retired", "disposed", "returned"}:
             retired_rows.append(row)
             continue
+        if free:
+            open_rows.append(row)
 
-        if team_id is not None and row["assigned_to_user_id"]:
-            from app.models.models import TeamMember
-
-            assignee_id = UUID(row["assigned_to_user_id"])
-            assignee = db.get(User, assignee_id)
-            in_team = False
-            if assignee is not None and assignee.team_id == team_id:
-                in_team = True
-            elif db.scalar(
-                select(TeamMember.id).where(
-                    TeamMember.user_id == assignee_id,
-                    TeamMember.team_id == team_id,
-                ).limit(1)
-            ):
-                in_team = True
-            if not in_team:
-                continue
-
-        code = row["current_shift_code"]
-        if code and code in by_shift:
-            by_shift[code].append(row)
-        else:
-            unassigned_shift.append(row)
-
-        if row["is_shared_candidate"]:
+        occupants = [
+            r for r in it_asset_service.list_open_assignments(db, asset.id)
+            if allocation.dates_overlap(*allocation._row_dates(r), on_date, on_date)
+        ]
+        if len(occupants) > 1:
             shared_rows.append(row)
+        for assignment in occupants:
+            if team_members is not None and assignment.assigned_to_user_id not in team_members:
+                continue
+            user = db.get(User, assignment.assigned_to_user_id)
+            window = allocation.window_for_row(assignment, shift_map)
+            occupant_row = {
+                **row,
+                "assigned_to_user_id": str(assignment.assigned_to_user_id),
+                "assigned_to_name": _full_name(user),
+                "assigned_date": assignment.assigned_date.isoformat(),
+                "assignment_window": window.label,
+                "needs_review": window.legacy,
+            }
+            placed = False
+            if window.all_day:
+                employee_shift = resource_shift_service.get_employee_shift(db, assignment.assigned_to_user_id, on_date)
+                if employee_shift is not None and employee_shift.code in by_shift:
+                    by_shift[employee_shift.code].append(
+                        {**occupant_row, "current_shift_code": employee_shift.code,
+                         "current_shift_name": employee_shift.name,
+                         "current_shift_display": resource_shift_service.format_shift_label(employee_shift)}
+                    )
+                    placed = True
+            else:
+                for shift in shifts:
+                    if assignment.shift_id == shift.id or (
+                        not assignment.shift_id
+                        and allocation.windows_overlap(window, allocation.window_for_shift(shift))
+                    ):
+                        by_shift[shift.code].append(
+                            {**occupant_row, "current_shift_code": shift.code, "current_shift_name": shift.name,
+                             "current_shift_display": resource_shift_service.format_shift_label(shift)}
+                        )
+                        placed = True
+            if not placed:
+                unassigned_shift.append(occupant_row)
 
     shift_sections = []
     for shift in shifts:
@@ -148,6 +178,10 @@ def computers_by_shift(
                 "shift_name": shift.name,
                 "shift_display": resource_shift_service.format_shift_label(shift),
                 "assigned_count": len(rows),
+                "available_count": sum(
+                    1 for slots in slots_by_asset.values()
+                    for s in slots if s["shift_code"] == shift.code and s["status"] == "AVAILABLE"
+                ),
                 "computers": rows,
             }
         )

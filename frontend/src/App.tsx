@@ -74,6 +74,7 @@ const PerformanceReviewWorkspacePage = lazy(
   () => import('./pages/PerformanceReviewWorkspacePage'),
 );
 const HelpDeskPage = lazy(() => import('./pages/HelpDeskPage'));
+const TicketDetailPage = lazy(() => import('./pages/tickets/TicketDetailPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const TrainingPage = lazy(() => import('./pages/TrainingPage'));
 const ExitProcessPage = lazy(() => import('./pages/ExitProcessPage'));
@@ -107,6 +108,11 @@ const ITComputersPage = lazy(() =>
 const ITVirtualSeatsPage = lazy(() =>
   import('./pages/it/ITVirtualSeatsPage').then((module) => ({
     default: module.ITVirtualSeatsPage,
+  })),
+);
+const ITAllocationReviewPage = lazy(() =>
+  import('./pages/it/ITAllocationReviewPage').then((module) => ({
+    default: module.ITAllocationReviewPage,
   })),
 );
 const ITInventoryPage = lazy(() =>
@@ -404,6 +410,14 @@ export default function App() {
                           </Suspense>
                         }
                       />
+                      <Route
+                        path="/help-desk/tickets/:ticketId"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading ticket…" />}>
+                            <TicketDetailPage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     <Route element={<RoleRoute allowed={canViewOrganizationChart} />}>
                       <Route
@@ -535,6 +549,14 @@ export default function App() {
                         element={
                           <Suspense fallback={<LoadingState message="Loading virtual seats…" />}>
                             <ITVirtualSeatsPage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/it/allocation"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading reservations…" />}>
+                            <ITAllocationReviewPage />
                           </Suspense>
                         }
                       />

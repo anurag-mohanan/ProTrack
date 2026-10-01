@@ -43,6 +43,7 @@ export function ITProfilePanel({
   }
 
   const assets = profile?.assets ?? [];
+  const allocations = profile?.allocations ?? [];
   const accounts = profile?.accounts ?? [];
   const ips = profile?.ips ?? [];
   const software = profile?.software ?? [];
@@ -181,6 +182,56 @@ export function ITProfilePanel({
                     <Chip size="small" label={asset.status} />
                   </TableCell>
                   <TableCell>{formatCellValue(asset.location)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      ) : null}
+
+      {allocations.length > 0 ? (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Schedule (assets & licenses)
+          </Typography>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Resource</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Assigned</TableCell>
+                <TableCell>Dates</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {allocations.map((row) => (
+                <TableRow key={`${row.resource_type}-${row.assignment_id}`}>
+                  <TableCell>
+                    {row.resource_label}
+                    {row.shared_with > 0 ? (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color="info"
+                        label={`Shared with ${row.shared_with}`}
+                        sx={{ ml: 1 }}
+                      />
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {row.resource_type === 'license' ? 'License' : 'Asset'}
+                    {row.category ? ` · ${row.category}` : ''}
+                  </TableCell>
+                  <TableCell>
+                    {row.legacy ? (
+                      <Chip size="small" color="warning" label="LEGACY / NEEDS REVIEW" />
+                    ) : row.allocation_kind === 'scheduled' && row.times ? (
+                      `Assigned: ${row.times}${row.shift_name ? ` · ${row.shift_name}` : ''}`
+                    ) : (
+                      row.window_label
+                    )}
+                  </TableCell>
+                  <TableCell>{row.dates}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

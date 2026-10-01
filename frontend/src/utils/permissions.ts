@@ -108,30 +108,6 @@ export function isExecutiveRole(roleName: string): boolean {
   return EXECUTIVE_ROLES.includes(normalizeRoleName(roleName));
 }
 
-// Roles that work help-desk queues (mirror of ticketing_service agent roles).
-export const TICKET_AGENT_ROLES: readonly string[] = [
-  ROLES.ADMIN,
-  ...EXECUTIVE_ROLES,
-  'Director of IT',
-  'IT Manager',
-  'System Administrator',
-  'IT Executive',
-  'IT Support Engineer',
-  'Director of HR',
-  'HR Manager',
-  'HR Executive',
-  ROLES.HR,
-  'HR Assistant',
-  ROLES.OFFICE_ADMINISTRATOR,
-];
-
-export function isTicketAgentRole(roleName?: string | null): boolean {
-  if (!roleName) return false;
-  return TICKET_AGENT_ROLES.some(
-    (role) => normalizeRoleName(role) === normalizeRoleName(roleName),
-  );
-}
-
 export type DashboardRoleGroup =
   | 'admin'
   | 'engineering_manager'
@@ -426,6 +402,7 @@ const IT_SECTION_NAV: SectionNavConfigItem[] = [
       '/it/assets',
       '/it/inventory',
       '/it/virtual-seats',
+      '/it/allocation',
       '/it/workstation-packages',
       '/it/maintenance',
       '/it/returned-assets',

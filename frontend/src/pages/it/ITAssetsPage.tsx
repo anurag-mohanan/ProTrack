@@ -68,6 +68,21 @@ import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginated
 import { AssetBulkActionBar } from '../../components/it/AssetBulkActionBar';
 import { AssetLifecycleDrawer } from '../../components/it/AssetLifecycleDrawer';
 import { AssignmentAvailabilityPanel } from '../../components/it/AssignmentAvailabilityPanel';
+import { AllocationCheckPanel } from '../../components/it/allocation/AllocationCheckPanel';
+import { AllocationWindowFields } from '../../components/it/allocation/AllocationWindowFields';
+import { ScheduleTimeline } from '../../components/it/allocation/ScheduleTimeline';
+import {
+  NO_OVERRIDE,
+  checkAllowsSave,
+  emptyWindow,
+  overridePayload,
+  windowReady,
+  windowToInput,
+  type AllocationWindowState,
+  type OverrideState,
+} from '../../components/it/allocation/allocationWindow';
+import { fetchAssetSchedule, itAllocationKeys } from '../../api/itAllocation';
+import type { AllocationCheckRequest, AllocationCheckResult } from '../../types/itAllocation';
 import { ResourcePlanningDataQualityPanel } from '../../components/resource-planning/ResourcePlanningDataQualityPanel';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
@@ -348,9 +363,16 @@ export function ITAssetsPage({
   const [qualityOpen, setQualityOpen] = useState(() => searchParams.get('data_quality') === '1');
   const [ipTarget, setIpTarget] = useState<ITAsset | null>(null);
   const [assignUserId, setAssignUserId] = useState('');
-  const [assignShiftId, setAssignShiftId] = useState('');
-  const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
+  const [assignWindow, setAssignWindow] = useState<AllocationWindowState>(() => emptyWindow());
   const [assignNotes, setAssignNotes] = useState('');
+  const [assignPurpose, setAssignPurpose] = useState('');
+  const [assignOverride, setAssignOverride] = useState<OverrideState>(NO_OVERRIDE);
+  const [assignCheck, setAssignCheck] = useState<AllocationCheckResult | undefined>();
+  const assignShiftId = assignWindow.mode === 'shift' ? assignWindow.shiftId : '';
+  const setAssignShiftId = useCallback(
+    (shiftId: string) => setAssignWindow((w) => ({ ...w, mode: 'shift', shiftId })),
+    [],
+  );
   const [returnDate, setReturnDate] = useState(new Date().toISOString().slice(0, 10));
   const [returnCondition, setReturnCondition] = useState('good');
   const [returnNotes, setReturnNotes] = useState('');
@@ -506,7 +528,26 @@ export function ITAssetsPage({
     if (needsShift && derivedShiftId && !assignShiftId) {
       setAssignShiftId(derivedShiftId);
     }
-  }, [assignPreviewQuery.data, assignShiftId]);
+  }, [assignPreviewQuery.data, assignShiftId, setAssignShiftId]);
+
+  const assignCheckRequest = useMemo<AllocationCheckRequest | null>(
+    () =>
+      assignTarget && assignUserId && windowReady(assignWindow)
+        ? {
+            resource_type: 'asset',
+            resource_id: assignTarget.id,
+            user_id: assignUserId,
+            ...windowToInput(assignWindow),
+          }
+        : null,
+    [assignTarget, assignUserId, assignWindow],
+  );
+
+  const assignScheduleQuery = useQuery({
+    queryKey: itAllocationKeys.assetSchedule(assignTarget?.id ?? '', assignWindow.startDate || undefined),
+    queryFn: () => fetchAssetSchedule(assignTarget!.id, assignWindow.startDate || undefined),
+    enabled: Boolean(assignTarget),
+  });
 
   useEffect(() => {
     if (editing || !nameSuggestQuery.data?.computer_name) return;
@@ -859,17 +900,30 @@ export function ITAssetsPage({
     mutationFn: () =>
       assignAsset(assignTarget!.id, {
         user_id: assignUserId,
-        assigned_date: optionalString(assignDate),
+        ...(() => {
+          const w = windowToInput(assignWindow);
+          return {
+            shift_id: w.shift_id,
+            start_time: w.start_time,
+            end_time: w.end_time,
+            assigned_date: w.start_date,
+            planned_end_date: w.end_date,
+          };
+        })(),
         notes: optionalString(assignNotes),
-        shift_id: optionalString(assignShiftId),
+        purpose: optionalString(assignPurpose),
+        ...overridePayload(assignCheck, assignOverride),
       }),
     onSuccess: () => {
       showSuccess('Asset assigned.');
       setAssignTarget(null);
       setAssignUserId('');
-      setAssignShiftId('');
+      setAssignWindow(emptyWindow());
       setAssignNotes('');
+      setAssignPurpose('');
+      setAssignOverride(NO_OVERRIDE);
       invalidateAssets();
+      void queryClient.invalidateQueries({ queryKey: itAllocationKeys.all });
     },
     onError: (error) => showError(getErrorMessage(error)),
   });
@@ -993,15 +1047,6 @@ export function ITAssetsPage({
         label: userDisplayName(u) || u.email || u.id,
       })),
     [usersQuery.data],
-  );
-
-  const shiftOptions = useMemo(
-    () =>
-      (shiftsQuery.data ?? []).map((shift) => ({
-        value: shift.id,
-        label: shift.display_label || shift.name || shift.code,
-      })),
-    [shiftsQuery.data],
   );
 
   const openReturnAssignments = useMemo(
@@ -1406,18 +1451,19 @@ export function ITAssetsPage({
               }
             />
           ) : null}
-          {canAssign && params.row.status === 'available' ? (
+          {canAssign && (params.row.status === 'available' || params.row.status === 'assigned') ? (
             <ProsohmButton
               buttonVariant="outlined"
               size="small"
               aria-label="Assign"
-              title="Assign"
+              title={params.row.status === 'assigned' ? 'Assign another shift / window' : 'Assign'}
               onClick={() => {
                 setAssignTarget(params.row);
                 setAssignUserId('');
-                setAssignShiftId('');
-                setAssignDate(new Date().toISOString().slice(0, 10));
+                setAssignWindow(emptyWindow());
                 setAssignNotes('');
+                setAssignPurpose('');
+                setAssignOverride(NO_OVERRIDE);
               }}
               sx={{ minWidth: 0, px: 0.75 }}
             >
@@ -2151,29 +2197,46 @@ export function ITAssetsPage({
                 .catch((error) => showError(getErrorMessage(error)));
             }}
           />
+          {assignScheduleQuery.data ? (
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                Current schedule ({assignScheduleQuery.data.on_date})
+                {assignScheduleQuery.data.policy.shareable ? ' · Shareable by shift' : ' · Exclusive'}
+              </Typography>
+              <ScheduleTimeline blocks={assignScheduleQuery.data.blocks} />
+            </Box>
+          ) : null}
           <FormSelect
             label="Assignee"
             required
             value={assignUserId}
             onChange={(event) => {
               setAssignUserId(String(event.target.value));
-              setAssignShiftId('');
+              setAssignWindow((w) => ({ ...w, shiftId: '' }));
+              setAssignOverride(NO_OVERRIDE);
             }}
             options={userOptions}
           />
-          <FormSelect
-            label="Shift slot (shared desk)"
-            value={assignShiftId}
-            onChange={(event) => setAssignShiftId(String(event.target.value))}
-            options={[{ value: '', label: 'None (single assignee)' }, ...shiftOptions]}
-            helper="Defaults from this person’s Resource Planning shift. Change only for a shared-desk slot."
+          <AllocationWindowFields
+            value={assignWindow}
+            onChange={(next) => {
+              setAssignWindow(next);
+              setAssignOverride(NO_OVERRIDE);
+            }}
+            shifts={shiftsQuery.data ?? []}
+            allModeLabel="All hours (single occupant)"
+          />
+          <AllocationCheckPanel
+            request={assignCheckRequest}
+            override={assignOverride}
+            onOverrideChange={setAssignOverride}
+            onResult={setAssignCheck}
           />
           <FormField
-            label="Assigned date"
-            type="date"
-            value={assignDate}
-            onChange={(event) => setAssignDate(event.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            label="Purpose (optional)"
+            value={assignPurpose}
+            onChange={(event) => setAssignPurpose(event.target.value)}
+            maxLength={200}
           />
           <FormField
             label="Notes"
@@ -2190,7 +2253,7 @@ export function ITAssetsPage({
           <ProsohmButton
             buttonVariant="primary"
             loading={assignMutation.isPending}
-            disabled={!assignUserId || (Boolean(assignUserId) && assignPreviewQuery.data?.ok === false)}
+            disabled={!assignUserId || !checkAllowsSave(assignCheck, assignOverride)}
             onClick={() => assignMutation.mutate()}
           >
             Assign

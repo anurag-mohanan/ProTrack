@@ -34,7 +34,7 @@ import {
   uninstallSoftwareInstallation,
   updateSoftwareCatalog,
 } from '../../api/itOperations';
-import { fetchUsers } from '../../api/lookups';
+import { useAssignableEmployees } from '../../components/common/employeeDirectory';
 import { getErrorMessage } from '../../api/client';
 import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -62,7 +62,7 @@ import type {
   SoftwareInstallation,
   SoftwareLicensePool,
 } from '../../types/itOperations';
-import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
+import { formatCellValue, formatDate } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import { accessContextFromUser, canManageItAssets, canManageItSoftware } from '../../utils/permissions';
 import { fetchShifts } from '../../api/resourceShifts';
@@ -262,11 +262,7 @@ export function ITSoftwarePage() {
     queryKey: itOperationsKeys.softwareExpiry(),
     queryFn: () => fetchSoftwareExpirySummary(30),
   });
-  const usersQuery = useQuery({
-    queryKey: ['lookups', 'users'],
-    queryFn: () => fetchUsers(),
-    enabled: canManage && (assignOpen || requirementOpen),
-  });
+  const employees = useAssignableEmployees(canManage && (assignOpen || requirementOpen));
 
   const softwareOptions = useMemo(
     () =>
@@ -314,14 +310,7 @@ export function ITSoftwarePage() {
     [assignOpen, assignForm.license_pool_id, assignForm.user_id, assignWindow],
   );
 
-  const userOptions = useMemo(
-    () =>
-      (usersQuery.data ?? []).map((u) => ({
-        value: u.id,
-        label: userDisplayName(u) || u.email || u.id,
-      })),
-    [usersQuery.data],
-  );
+  const userOptions = employees.options;
 
   const invalidateSoftware = () => {
     void queryClient.invalidateQueries({ queryKey: itOperationsKeys.all });
@@ -1377,11 +1366,19 @@ export function ITSoftwarePage() {
               searchable
               value={assignForm.user_id}
               onChange={(e) => {
-                setAssignForm((f) => ({ ...f, user_id: String(e.target.value) }));
+                const nextId = String(e.target.value);
+                setAssignForm((f) => ({ ...f, user_id: nextId }));
+                setAssignWindow((w) => ({ ...w, shiftId: employees.byId.get(nextId)?.shift_id ?? '' }));
                 setAssignOverride(NO_OVERRIDE);
               }}
               options={userOptions}
             />
+            {employees.byId.get(assignForm.user_id)?.shift_state === 'NOT_ASSIGNED' ? (
+              <Typography variant="body2" color="warning.main">
+                This employee has no shift assigned. For a scheduled floating right, choose the shift or time
+                window explicitly.
+              </Typography>
+            ) : null}
             <AllocationWindowFields
               value={assignWindow}
               onChange={(next) => {

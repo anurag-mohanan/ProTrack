@@ -1403,6 +1403,7 @@ class ResourcePackageRead(TimestampSchema):
 class ResourcePackagePreviewRequest(BlankOptionalFieldsMixin, BaseModel):
     user_id: UUID
     on_date: Optional[date] = None
+    shift_id: Optional[UUID] = None
 
 
 class ResourcePackageAssignRequest(BlankOptionalFieldsMixin, BaseModel):

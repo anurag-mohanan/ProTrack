@@ -56,7 +56,8 @@ import {
   transferAsset,
   updateAsset,
 } from '../../api/itOperations';
-import { fetchCustomers, fetchUsers } from '../../api/lookups';
+import { fetchCustomers } from '../../api/lookups';
+import { useAssignableEmployees } from '../../components/common/employeeDirectory';
 import { fetchShifts } from '../../api/resourceShifts';
 import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
@@ -99,7 +100,7 @@ import { fetchComputerTypes, itProvisioningKeys } from '../../api/itProvisioning
 import { useToast } from '../../context/ToastContext';
 import { DATA_GRID_ACTIONS_COLUMN_WIDTH } from '../../theme/componentStyles';
 import type { ITAsset, ITAssetCreate, ITAssetUpdate } from '../../types/itOperations';
-import { formatCellValue, formatDate, userDisplayName } from '../../utils/format';
+import { formatCellValue, formatDate } from '../../utils/format';
 import { optionalString, validateRequiredFields } from '../../utils/formValues';
 import {
   accessContextFromUser,
@@ -558,11 +559,7 @@ export function ITAssetsPage({
     );
   }, [nameSuggestQuery.data, editing]);
 
-  const usersQuery = useQuery({
-    queryKey: ['lookups', 'users'],
-    queryFn: () => fetchUsers(),
-    enabled: canAssign,
-  });
+  const employees = useAssignableEmployees(canAssign);
 
   const shiftsQuery = useQuery({
     queryKey: ['resource-shifts', 'list', 'active'],
@@ -1040,14 +1037,8 @@ export function ITAssetsPage({
     return [...rows, { value: ADD_NEW_SUPPLIER, label: '+ Add new supplier' }];
   }, [suppliersQuery.data]);
 
-  const userOptions = useMemo(
-    () =>
-      (usersQuery.data ?? []).map((u) => ({
-        value: u.id,
-        label: userDisplayName(u) || u.email || u.id,
-      })),
-    [usersQuery.data],
-  );
+  const userOptions = employees.options;
+  const assignEmployee = employees.byId.get(assignUserId);
 
   const openReturnAssignments = useMemo(
     () => (returnAssignmentsQuery.data ?? []).filter((row) => !row.returned_date),
@@ -2210,13 +2201,20 @@ export function ITAssetsPage({
             label="Assignee"
             required
             value={assignUserId}
+            searchable
             onChange={(event) => {
-              setAssignUserId(String(event.target.value));
-              setAssignWindow((w) => ({ ...w, shiftId: '' }));
+              const nextId = String(event.target.value);
+              setAssignUserId(nextId);
+              setAssignWindow((w) => ({ ...w, shiftId: employees.byId.get(nextId)?.shift_id ?? '' }));
               setAssignOverride(NO_OVERRIDE);
             }}
             options={userOptions}
           />
+          {assignEmployee?.shift_state === 'NOT_ASSIGNED' ? (
+            <Typography variant="body2" color="warning.main">
+              {assignEmployee.name} has no shift assigned. Choose the shift or time window explicitly.
+            </Typography>
+          ) : null}
           <AllocationWindowFields
             value={assignWindow}
             onChange={(next) => {

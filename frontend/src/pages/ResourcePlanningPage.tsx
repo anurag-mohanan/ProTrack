@@ -206,15 +206,6 @@ export function ResourcePlanningPage() {
     setDraftGranularity('week');
   };
 
-  const designerOptions = useMemo(
-    () =>
-      (planningQuery.data?.designers ?? []).map((d) => ({
-        user_id: d.user_id,
-        designer_name: d.designer_name,
-      })),
-    [planningQuery.data?.designers],
-  );
-
   const data = planningQuery.data;
   const filteredByTeam =
     data && selectedTeamId
@@ -307,7 +298,7 @@ export function ResourcePlanningPage() {
 
       {mainTab === 'shifts' && (
         <Box sx={{ mt: 1 }}>
-          <ResourcePlanningShiftsPanel designers={designerOptions} teamId={teamParam} />
+          <ResourcePlanningShiftsPanel teamId={teamParam} />
         </Box>
       )}
 

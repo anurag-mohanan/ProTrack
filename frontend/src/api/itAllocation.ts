@@ -13,6 +13,7 @@ import type {
   SetupAssignResult,
   SharingPolicyRow,
 } from '../types/itAllocation';
+import type { EmployeeRoster, EmployeeRosterParams } from '../types/ResourceShifts';
 
 const BASE = '/it/allocation';
 
@@ -27,6 +28,7 @@ export const itAllocationKeys = {
   sessions: (poolId: string) => [...itAllocationKeys.all, 'sessions', poolId] as const,
   legacy: () => [...itAllocationKeys.all, 'legacy'] as const,
   sharingPolicy: () => [...itAllocationKeys.all, 'sharing-policy'] as const,
+  employees: (params: EmployeeRosterParams) => [...itAllocationKeys.all, 'employees', params] as const,
 };
 
 function clean<T extends object>(body: T): T {
@@ -103,6 +105,11 @@ export async function fetchLegacyReview() {
 export async function resolveLegacyAssignment(assignmentId: string, body: LegacyResolveRequest) {
   const { data } = await apiClient.post(`${BASE}/legacy/${assignmentId}/resolve`, clean(body));
   return data as { assignment_id: string };
+}
+
+export async function fetchAssignableEmployees(params: EmployeeRosterParams = {}) {
+  const { data } = await apiClient.get<EmployeeRoster>(`${BASE}/employees`, { params: clean(params) });
+  return data;
 }
 
 export async function fetchSharingPolicy() {

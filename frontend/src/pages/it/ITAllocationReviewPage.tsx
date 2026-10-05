@@ -16,7 +16,7 @@ import {
 import { getErrorMessage } from '../../api/client';
 import { fetchAssets, fetchSoftwareLicenses, itOperationsKeys } from '../../api/itOperations';
 import { itInventoryKeys } from '../../api/itInventory';
-import { fetchUsers } from '../../api/lookups';
+import { useAssignableEmployees } from '../../components/common/employeeDirectory';
 import { fetchShifts } from '../../api/resourceShifts';
 import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -49,7 +49,7 @@ import type {
   LegacyLicensePool,
   ResourceReservation,
 } from '../../types/itAllocation';
-import { formatDate, userDisplayName } from '../../utils/format';
+import { formatDate } from '../../utils/format';
 import { accessContextFromUser, canManageItAssets, canManageItSoftware } from '../../utils/permissions';
 
 type View = 'reservations' | 'legacy';
@@ -243,7 +243,7 @@ function ReservationDrawer({
   const [override, setOverride] = useState<OverrideState>(NO_OVERRIDE);
   const [check, setCheck] = useState<AllocationCheckResult | undefined>();
 
-  const usersQuery = useQuery({ queryKey: ['lookups', 'users'], queryFn: () => fetchUsers(), enabled: open });
+  const employees = useAssignableEmployees(open);
   const shiftsQuery = useQuery({
     queryKey: ['resource-shifts', 'list', 'active'],
     queryFn: () => fetchShifts({ active_only: true }),
@@ -282,9 +282,9 @@ function ReservationDrawer({
   const userOptions = useMemo(
     () => [
       { value: '', label: 'Not yet known (use "Reserved for")' },
-      ...(usersQuery.data ?? []).map((u) => ({ value: u.id, label: userDisplayName(u) || u.email || u.id })),
+      ...employees.options,
     ],
-    [usersQuery.data],
+    [employees.options],
   );
 
   const checkRequest = useMemo<AllocationCheckRequest | null>(

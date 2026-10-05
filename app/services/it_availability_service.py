@@ -300,3 +300,70 @@ def peripheral_availability(
             {"role": role, "label": rules.ROLE_LABELS[role], "total": len(subset), "available_by_shift": by_window}
         )
     return out
+
+
+def shift_capacity(db: Session, *, on_date: date | None = None) -> dict[str, Any]:
+    """Per shift: employees on it, computers held in it / free / blocked, and
+    concurrent license rights scheduled / free — all from the engine."""
+    from app.models.it_operations import SoftwareCatalog, SoftwareLicensePool
+    from app.services import employee_directory_service as directory
+
+    when = on_date or date.today()
+    avail = computer_availability(db, on_date=when)
+    roster = directory.employee_roster(db, on_date=when)
+    pools = [
+        p for p in db.scalars(select(SoftwareLicensePool)).all()
+        if (p.status or "active").lower() == "active"
+        and allocation.license_metric(p) == allocation.METRIC_CONCURRENT
+    ]
+    software_names = {
+        s.id: s.name for s in db.scalars(
+            select(SoftwareCatalog).where(SoftwareCatalog.id.in_({p.software_id for p in pools}))
+        ).all()
+    } if pools else {}
+    rows = []
+    for shift_meta in avail["shifts"]:
+        code = shift_meta["shift_code"]
+        shift = db.get(ResourceShift, UUID(shift_meta["shift_id"])) if shift_meta["shift_id"] else None
+        window = allocation.window_for_shift(shift) if shift else allocation.ALL_HOURS
+        counts = {"assigned": 0, "available": 0, "blocked": 0}
+        laptops = {"assigned": 0, "available": 0, "blocked": 0}
+        for computer in avail["computers"]:
+            slot = next((s for s in computer["shifts"] if s["shift_code"] == code), None)
+            if slot is None:
+                continue
+            bucket = laptops if computer["is_laptop"] else counts
+            if slot["status"] == "AVAILABLE":
+                bucket["available"] += 1
+            elif slot["status"] == "ASSIGNED":
+                bucket["assigned"] += 1
+            else:
+                bucket["blocked"] += 1
+        licenses = []
+        for pool in pools:
+            free = allocation.license_free_in_window(db, pool, window, on_date=when) or 0
+            seats = int(pool.seat_count or 0)
+            licenses.append({
+                "license_pool_id": str(pool.id),
+                "software_name": software_names.get(pool.software_id) or pool.entitlement_code,
+                "entitlement_code": pool.entitlement_code,
+                "rights": seats,
+                "scheduled": max(0, seats - free),
+                "available": free,
+            })
+        rows.append({
+            "shift_id": shift_meta["shift_id"],
+            "shift_code": code,
+            "shift_display": shift_meta["shift_display"],
+            "window": window.times,
+            "employees": roster["counts"]["by_shift"].get(code, 0),
+            "workstations": counts,
+            "laptops": laptops,
+            "licenses": sorted(licenses, key=lambda row: row["software_name"] or ""),
+        })
+    return {
+        "on_date": when,
+        "employees_total": roster["counts"]["total"],
+        "employees_without_shift": roster["counts"]["not_assigned"],
+        "shifts": rows,
+    }

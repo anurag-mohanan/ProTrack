@@ -337,6 +337,42 @@ def shift_for_user(
     )
 
 
+@router.get("/shifts/roster")
+def shift_roster(
+    on_date: date | None = Query(default=None, alias="date"),
+    status_filter: str = Query(default="active", alias="status"),
+    shift: str | None = None,
+    department_id: UUID | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Every employee from the User master with their shift on ``date``."""
+    from app.core.exceptions import ProTrackValidationError
+    from app.services import employee_directory_service as directory
+
+    _require_view(db, current_user)
+    try:
+        return directory.employee_roster(
+            db, on_date=on_date, status=status_filter, shift=shift, department_id=department_id, q=q
+        )
+    except ProTrackValidationError as exc:
+        raise HTTPException(status_code=exc.status_code or 422, detail=exc.detail) from exc
+
+
+@router.get("/shifts/capacity")
+def shift_capacity(
+    on_date: date | None = Query(default=None, alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employees, computers and concurrent license rights per shift (allocation engine)."""
+    from app.services import it_availability_service
+
+    _require_view(db, current_user)
+    return it_availability_service.shift_capacity(db, on_date=on_date)
+
+
 @router.get("/shifts/overview", response_model=ShiftOverview)
 def shifts_overview(
     on_date: date | None = Query(default=None, alias="date"),

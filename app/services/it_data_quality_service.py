@@ -826,6 +826,95 @@ def _allocation_issues(db: Session) -> list[dict]:
     ]
 
 
+def _shift_issues(db: Session) -> list[dict]:
+    """Shift master consistency: inactive holders and overlapping permanent ranges."""
+    from datetime import date as _date
+
+    from app.models.it_operations import SoftwareAssignment
+    from app.models.resource_shifts import ResourceShift, ResourceShiftAssignment
+
+    today = _date.today()
+    inactive_user = or_(User.is_active.is_(False), User.is_deleted.is_(True), User.is_archived.is_(True))
+
+    def _name(user: User) -> str:
+        return f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+
+    open_shift_rows = db.execute(
+        select(ResourceShiftAssignment, ResourceShift.code, User)
+        .join(ResourceShift, ResourceShift.id == ResourceShiftAssignment.shift_id)
+        .join(User, User.id == ResourceShiftAssignment.user_id)
+        .where(
+            ResourceShiftAssignment.is_active.is_(True),
+            or_(ResourceShiftAssignment.effective_to.is_(None), ResourceShiftAssignment.effective_to >= today),
+            inactive_user,
+        )
+    ).all()
+    inactive_shift = [
+        {"user_id": str(user.id), "user_name": _name(user), "detail": f"Shift {code} from {row.effective_from}"}
+        for row, code, user in open_shift_rows
+    ]
+
+    license_rows = db.execute(
+        select(SoftwareAssignment, User)
+        .join(User, User.id == SoftwareAssignment.user_id)
+        .where(SoftwareAssignment.released_date.is_(None), inactive_user)
+    ).all()
+    inactive_license = [
+        {"user_id": str(user.id), "user_name": _name(user), "pool_id": str(row.license_pool_id)}
+        for row, user in license_rows
+    ]
+
+    permanent = db.scalars(
+        select(ResourceShiftAssignment)
+        .where(
+            ResourceShiftAssignment.is_active.is_(True),
+            ResourceShiftAssignment.assignment_type == "permanent",
+        )
+        .order_by(ResourceShiftAssignment.user_id, ResourceShiftAssignment.effective_from)
+    ).all()
+    by_user: dict[UUID, list] = defaultdict(list)
+    for row in permanent:
+        by_user[row.user_id].append(row)
+    overlapping_users: list[UUID] = []
+    for user_id, rows in by_user.items():
+        for prev, nxt in zip(rows, rows[1:]):
+            if prev.effective_to is None or prev.effective_to >= nxt.effective_from:
+                overlapping_users.append(user_id)
+                break
+    users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(overlapping_users))).all()} if overlapping_users else {}
+    overlapping = [
+        {"user_id": str(uid), "user_name": _name(users[uid]) if uid in users else str(uid),
+         "detail": "Two permanent shift assignments cover the same dates"}
+        for uid in overlapping_users
+    ]
+    return [
+        _issue(
+            code="shift_assigned_to_inactive_employee",
+            severity="warning",
+            domain="people",
+            title="Current or future shift assignments held by inactive employees",
+            count=len(inactive_shift),
+            samples=inactive_shift,
+        ),
+        _issue(
+            code="license_held_by_inactive_employee",
+            severity="error",
+            domain="licenses",
+            title="Open software license assignments held by inactive employees",
+            count=len(inactive_license),
+            samples=inactive_license,
+        ),
+        _issue(
+            code="overlapping_permanent_shifts",
+            severity="error",
+            domain="people",
+            title="Employees with overlapping permanent shift assignments",
+            count=len(overlapping),
+            samples=overlapping,
+        ),
+    ]
+
+
 def _href_for_sample(sample: dict) -> str | None:
     if sample.get("item_id"):
         return f"/it/inventory?item={sample['item_id']}"
@@ -867,6 +956,7 @@ def build_data_quality_report(db: Session) -> dict:
         + _seat_issues(db)
         + _inventory_issues(db)
         + _allocation_issues(db)
+        + _shift_issues(db)
     )
     _annotate_sample_hrefs(issues)
 

@@ -152,3 +152,84 @@ export interface ShiftCalendar {
   shifts: Shift[];
   rows: ShiftCalendarRow[];
 }
+
+export type EmployeeShiftState = 'ASSIGNED' | 'NOT_ASSIGNED' | 'INACTIVE';
+
+export interface EmployeeRosterRow {
+  user_id: string;
+  name: string;
+  email: string;
+  employee_code: string | null;
+  department: string | null;
+  org_department_id: string | null;
+  department_id: string | null;
+  designation: string | null;
+  role_name: string | null;
+  manager_name: string | null;
+  is_active: boolean;
+  shift_state: EmployeeShiftState;
+  shift_id: string | null;
+  shift_code: string | null;
+  shift_name: string | null;
+  shift_start: string | null;
+  shift_end: string | null;
+  shift_display: string | null;
+  assignment_id: string | null;
+  assignment_type: string | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  shift_history_count: number;
+}
+
+export interface EmployeeRoster {
+  on_date: string;
+  counts: {
+    total: number;
+    assigned: number;
+    not_assigned: number;
+    inactive: number;
+    by_shift: Record<string, number>;
+  };
+  rows: EmployeeRosterRow[];
+}
+
+export interface EmployeeRosterParams {
+  date?: string;
+  status?: 'active' | 'inactive' | 'all';
+  shift?: string;
+  department_id?: string;
+  q?: string;
+}
+
+export interface ShiftCapacityCounts {
+  assigned: number;
+  available: number;
+  blocked: number;
+}
+
+export interface ShiftCapacityLicense {
+  license_pool_id: string;
+  software_name: string | null;
+  entitlement_code: string | null;
+  rights: number;
+  scheduled: number;
+  available: number;
+}
+
+export interface ShiftCapacityRow {
+  shift_id: string | null;
+  shift_code: string;
+  shift_display: string;
+  window: string;
+  employees: number;
+  workstations: ShiftCapacityCounts;
+  laptops: ShiftCapacityCounts;
+  licenses: ShiftCapacityLicense[];
+}
+
+export interface ShiftCapacity {
+  on_date: string;
+  employees_total: number;
+  employees_without_shift: number;
+  shifts: ShiftCapacityRow[];
+}

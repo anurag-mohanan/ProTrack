@@ -43,12 +43,12 @@ import {
   canManageResourceShifts,
 } from '../../utils/permissions';
 import { ResourcePlanningShiftHierarchyPanel } from './ResourcePlanningShiftHierarchyPanel';
-import type { ShiftPayload } from '../../types/ResourceShifts';
-
-type DesignerOption = { user_id: string; designer_name: string };
+import { EmployeePicker } from '../common/EmployeePicker';
+import { ShiftCapacityPanel } from './ShiftCapacityPanel';
+import { ShiftEmployeeRosterPanel } from './ShiftEmployeeRosterPanel';
+import type { EmployeeRosterRow, ShiftPayload } from '../../types/ResourceShifts';
 
 type Props = {
-  designers: DesignerOption[];
   teamId?: string;
 };
 
@@ -97,7 +97,7 @@ const EMPTY_SHIFT: ShiftPayload = {
   notes: '',
 };
 
-export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
+export function ResourcePlanningShiftsPanel({ teamId }: Props) {
   const { user } = useAuth();
   const ctx = accessContextFromUser(user);
   const canManage = canManageResourceShifts(ctx);
@@ -106,10 +106,11 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
   const queryClient = useQueryClient();
 
   const [subTab, setSubTab] = useState<
-    'overview' | 'board' | 'hierarchy' | 'masters' | 'assign' | 'calendar'
-  >('overview');
+    'employees' | 'overview' | 'board' | 'hierarchy' | 'masters' | 'assign' | 'calendar'
+  >('employees');
   const [shiftForm, setShiftForm] = useState<ShiftPayload>(EMPTY_SHIFT);
   const [assignUserId, setAssignUserId] = useState('');
+  const [assignEmployee, setAssignEmployee] = useState<EmployeeRosterRow | null>(null);
   const [assignShiftId, setAssignShiftId] = useState('');
   const [assignFrom, setAssignFrom] = useState(todayIso());
   const [assignType, setAssignType] = useState<'permanent' | 'rotational'>('permanent');
@@ -237,6 +238,7 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
     onSuccess: () => {
       showSuccess('Shift assigned');
       setAssignUserId('');
+      setAssignEmployee(null);
       setAssignShiftId('');
       void queryClient.invalidateQueries({ queryKey: resourceShiftKeys.all });
     },
@@ -300,6 +302,7 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
         {(
           [
+            ['employees', 'Employees'],
             ['overview', 'Overview'],
             ['board', 'Shift board'],
             ['hierarchy', 'Hierarchy'],
@@ -317,6 +320,21 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           />
         ))}
       </Stack>
+
+      {subTab === 'employees' && (
+        <ShiftEmployeeRosterPanel
+          shifts={activeShifts}
+          canAssign={canAssign}
+          onAssign={(row) => {
+            setAssignEmployee(row);
+            setAssignUserId(row.user_id);
+            setAssignShiftId('');
+            setSubTab('assign');
+          }}
+        />
+      )}
+
+      {subTab === 'overview' && <ShiftCapacityPanel date={boardDate} />}
 
       {subTab === 'overview' && (
         <DashboardPanel title="Shift overview" subtitle={`Coverage for ${boardDate}`}>
@@ -699,17 +717,23 @@ export function ResourcePlanningShiftsPanel({ designers, teamId }: Props) {
           <Stack spacing={2}>
             {canAssign ? (
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }}>
-                <FormSelect
-                  label="Person"
-                  size="small"
-                  value={assignUserId}
-                  options={[
-                    { value: '', label: 'Select person' },
-                    ...designers.map((d) => ({ value: d.user_id, label: d.designer_name })),
-                  ]}
-                  onChange={(e) => setAssignUserId(String(e.target.value))}
-                  sx={{ minWidth: 200 }}
-                />
+                <Box sx={{ minWidth: 320 }}>
+                  <EmployeePicker
+                    source="shifts"
+                    value={assignUserId}
+                    onChange={(row) => {
+                      setAssignEmployee(row);
+                      setAssignUserId(row?.user_id ?? '');
+                    }}
+                    helperText={
+                      assignEmployee
+                        ? assignEmployee.shift_state === 'ASSIGNED'
+                          ? `Currently ${assignEmployee.shift_display ?? assignEmployee.shift_name} — the new shift replaces it from the effective date`
+                          : 'No shift assigned yet'
+                        : undefined
+                    }
+                  />
+                </Box>
                 <FormSelect
                   label="Shift"
                   size="small"

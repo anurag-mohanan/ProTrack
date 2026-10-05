@@ -67,6 +67,7 @@ REASON_RESERVED = "RESERVED"
 REASON_CAPACITY = "CAPACITY"
 REASON_METRIC = "METRIC_RULE"
 REASON_POOL_INACTIVE = "POOL_INACTIVE"
+REASON_EMPLOYEE = "EMPLOYEE_INELIGIBLE"
 
 # Only these may be overridden (with permission + reason); lifecycle / metric never.
 OVERRIDABLE_REASONS = frozenset({REASON_TIME_OVERLAP, REASON_LEGACY, REASON_RESERVED})
@@ -985,6 +986,19 @@ def license_schedule(db: Session, pool: SoftwareLicensePool, *, on_date: date | 
 # --- Dispatcher ---------------------------------------------------------------------
 
 
+def employee_block(db: Session, user_id: UUID | None) -> str | None:
+    """Why this employee cannot receive resources, or None when eligible."""
+    if user_id is None:
+        return None
+    user = db.get(User, user_id)
+    if user is None or user.is_deleted:
+        return "Employee not found."
+    if not user.is_active or user.is_archived:
+        name = f"{user.first_name} {user.last_name}".strip() or user.email
+        return f"{name} is inactive — resources can only be assigned to active employees."
+    return None
+
+
 def calculate_resource_availability(
     db: Session,
     *,
@@ -992,6 +1006,10 @@ def calculate_resource_availability(
     resource_id: UUID,
     req: AllocationRequest,
 ) -> dict[str, Any]:
+    blocked = employee_block(db, req.user_id)
+    if blocked:
+        return _result(NOT_ALLOWED, REASON_EMPLOYEE, blocked, remaining_capacity=0,
+                       resource_type=resource_type, resource_id=str(resource_id))
     if resource_type == "asset":
         asset = db.get(Asset, resource_id)
         if asset is None:

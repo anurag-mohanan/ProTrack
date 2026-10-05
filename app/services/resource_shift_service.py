@@ -576,8 +576,13 @@ def assign_shift(db: Session, payload: dict, *, commit: bool = True) -> Resource
         raise ShiftValidationError("Shift not found.")
     if not shift.is_active:
         raise ShiftValidationError(f"Shift '{shift.code}' is inactive.")
-    if db.get(User, user_id) is None:
+    user = db.get(User, user_id)
+    if user is None or user.is_deleted:
         raise ShiftValidationError("User not found.")
+    if not user.is_active or user.is_archived:
+        raise ShiftValidationError(
+            f"{display_name(user)} is inactive — shifts can only be assigned to active employees."
+        )
 
     if assignment_type == ASSIGNMENT_TYPE_ROTATIONAL and not rotation_pattern:
         raise ShiftValidationError("Rotational assignments require a rotation pattern.")
@@ -803,7 +808,9 @@ def shift_calendar(
     if end < start:
         raise ShiftValidationError("'to' must not precede 'from'.")
 
-    stmt = select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+    stmt = select(User).where(
+        User.is_deleted.is_(False), User.is_active.is_(True), User.is_archived.is_(False)
+    )
     if team_id is not None:
         scoped = _team_scoped_user_ids(db, team_id)
         if not scoped:
@@ -816,9 +823,7 @@ def shift_calendar(
 
     rows = []
     for user in sorted(users, key=display_name):
-        per_day = resolved.get(user.id)
-        if not per_day:
-            continue
+        per_day = resolved.get(user.id) or {}
         days = []
         day = start
         while day <= end:

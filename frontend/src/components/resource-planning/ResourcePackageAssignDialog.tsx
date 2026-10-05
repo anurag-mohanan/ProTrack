@@ -85,8 +85,8 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
     enabled: open && canShift,
   });
   const previewQuery = useQuery({
-    queryKey: resourcePlanningQueryKeys.packagePreview(packageId, userId),
-    queryFn: () => previewResourcePackage(packageId, userId),
+    queryKey: resourcePlanningQueryKeys.packagePreview(packageId, userId, shiftId),
+    queryFn: () => previewResourcePackage(packageId, userId, shiftId),
     enabled: open && Boolean(packageId) && Boolean(userId),
   });
   const recommendQuery = useQuery({
@@ -180,7 +180,7 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
             onChange={(e) => setShiftId(e.target.value)}
             fullWidth
           >
-            <MenuItem value="">Keep current / unassigned</MenuItem>
+            <MenuItem value="">Keep current shift</MenuItem>
             {(shiftsQuery.data ?? []).map((shift) => (
               <MenuItem key={shift.id} value={shift.id}>
                 {shift.name}
@@ -241,6 +241,16 @@ export function ResourcePackageAssignDialog({ open, userId, userName, onClose }:
       case 3:
         return preview ? (
           <Stack spacing={1}>
+            {preview.shift_required ? (
+              <Alert severity="warning">
+                This employee has no shift and none was chosen — availability is checked for all hours, so shared
+                workstations already used in any shift are excluded. Go back to step 1 to choose a shift.
+              </Alert>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Availability checked for {preview.assignment_window}.
+              </Typography>
+            )}
             {preview.hardware.map((line) => (
               <Alert
                 key={line.asset_type_id}

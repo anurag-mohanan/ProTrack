@@ -437,6 +437,7 @@ def dashboard_resource_planning_package_preview(
             user_id=payload.user_id,
             package_id=package_id,
             on_date=payload.on_date,
+            shift_id=payload.shift_id,
         )
     except ProTrackValidationError as exc:
         raise HTTPException(

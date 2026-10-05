@@ -1312,6 +1312,10 @@ export interface ResourcePackagePreview {
   requires_ip: boolean;
   on_date: string;
   shift?: { id?: string; name?: string; code?: string } | null;
+  /** Shift the availability was checked for: the chosen one, else the employee's own. */
+  assignment_shift?: { id?: string; name?: string; code?: string } | null;
+  assignment_window?: string;
+  shift_required?: boolean;
   hardware: Array<{
     asset_type_id: string;
     asset_type_name: string;

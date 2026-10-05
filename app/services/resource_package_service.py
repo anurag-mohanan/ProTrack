@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import date
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import MODULE_RESOURCE_PLANNING
@@ -15,7 +15,6 @@ from app.models.enums import ActivityAction, EntityType
 from app.models.it_operations import (
     SOFTWARE_REQUIREMENT_LEVELS,
     Asset,
-    AssetAssignment,
     AssetType,
     Computer,
     IPAddress,
@@ -25,7 +24,9 @@ from app.models.it_operations import (
     SoftwareCatalog,
 )
 from app.models.models import User
+from app.models.resource_shifts import ResourceShift
 from app.services import it_asset_service, it_network_service, it_software_service
+from app.services import resource_allocation_engine as allocation
 from app.services.activity_service import log_activity
 from app.services.resource_shift_service import (
     ShiftConflictError,
@@ -247,33 +248,32 @@ def deactivate_package(db: Session, package: ResourcePackage) -> ResourcePackage
     return package
 
 
-def _open_assignment_asset_ids(db: Session, on_date: date) -> set[UUID]:
-    return set(
-        db.scalars(
-            select(AssetAssignment.asset_id).where(
-                AssetAssignment.assigned_date <= on_date,
-                or_(
-                    AssetAssignment.returned_date.is_(None),
-                    AssetAssignment.returned_date > on_date,
-                ),
-            )
-        ).all()
-    )
+def _effective_shift_id(db: Session, user_id: UUID, shift_id: UUID | None, on_date: date) -> UUID | None:
+    """The shift the package is for: the one chosen, else the employee's own shift that day."""
+    if shift_id is not None:
+        return shift_id
+    current = get_employee_shift(db, user_id, on_date)
+    return current.id if current is not None else None
 
 
 def _available_assets_of_type(
     db: Session,
     asset_type_id: UUID,
-    on_date: date,
+    req: allocation.AllocationRequest,
 ) -> list[Asset]:
-    occupied = _open_assignment_asset_ids(db, on_date)
-    stmt = select(Asset).where(
-        Asset.asset_type_id == asset_type_id,
-        Asset.is_deleted.is_(False),
-        Asset.status == "available",
+    stmt = (
+        select(Asset)
+        .where(
+            Asset.asset_type_id == asset_type_id,
+            Asset.is_deleted.is_(False),
+            Asset.status.notin_(UNAVAILABLE_ASSET_STATUSES),
+        )
+        .order_by(Asset.asset_number)
     )
-    assets = [row for row in db.scalars(stmt).all() if row.id not in occupied]
-    return assets
+    return [
+        asset for asset in db.scalars(stmt).all()
+        if allocation.evaluate_asset(db, asset, req)["available"]
+    ]
 
 
 def _shift_payload(shift) -> dict | None:
@@ -294,6 +294,7 @@ def preview_package_assignment(
     user_id: UUID,
     package_id: UUID,
     on_date: date | None = None,
+    shift_id: UUID | None = None,
 ) -> dict:
     on_date = on_date or date.today()
     user = db.get(User, user_id)
@@ -307,8 +308,14 @@ def preview_package_assignment(
 
     hardware: list[dict] = []
     shortages: list[str] = []
+    ineligible = allocation.employee_block(db, user_id)
+    if ineligible:
+        shortages.append(ineligible)
+    employee_shift = get_employee_shift(db, user_id, on_date)
+    effective_shift_id = shift_id or (employee_shift.id if employee_shift else None)
+    req = allocation.build_request(db, start_date=on_date, shift_id=effective_shift_id, user_id=user_id)
     for line in package.hardware_lines:
-        candidates = _available_assets_of_type(db, line.asset_type_id, on_date)
+        candidates = _available_assets_of_type(db, line.asset_type_id, req)
         available = len(candidates)
         type_name = line.asset_type.name if line.asset_type else str(line.asset_type_id)
         if line.is_required and available < line.quantity:
@@ -343,7 +350,9 @@ def preview_package_assignment(
         pool_rows = []
         total_seats = 0
         for pool in pools:
-            seats = it_software_service.available_seats(db, pool)
+            verdict = allocation.evaluate_license(db, pool, req)
+            free = allocation.license_free_in_window(db, pool, req.window, on_date=on_date)
+            seats = (free if free is not None else int(pool.seat_count or 0)) if verdict["available"] else 0
             total_seats += seats
             pool_rows.append(
                 {
@@ -351,7 +360,9 @@ def preview_package_assignment(
                     "seat_count": pool.seat_count,
                     "available_seats": seats,
                     "license_type": pool.license_type,
+                    "metric": allocation.license_metric(pool),
                     "status": getattr(pool, "status", None) or "active",
+                    "reason": None if verdict["available"] else verdict["reason"],
                 }
             )
         sw_name = line.software.name if line.software else str(line.software_id)
@@ -384,7 +395,7 @@ def preview_package_assignment(
     if package.requires_ip and ip_available < 1:
         shortages.append("IP: none available")
 
-    shift = get_employee_shift(db, user_id, on_date)
+    selected_shift = db.get(ResourceShift, effective_shift_id) if effective_shift_id else None
     return {
         "user_id": str(user_id),
         "user_name": f"{user.first_name} {user.last_name}".strip(),
@@ -393,7 +404,10 @@ def preview_package_assignment(
         "package_name": package.name,
         "requires_ip": package.requires_ip,
         "on_date": on_date.isoformat(),
-        "shift": _shift_payload(shift),
+        "shift": _shift_payload(employee_shift),
+        "assignment_shift": _shift_payload(selected_shift),
+        "assignment_window": req.window.label,
+        "shift_required": selected_shift is None,
         "hardware": hardware,
         "software": software,
         "ip": {
@@ -462,17 +476,6 @@ def _validate_assign_selection(
         raise ProTrackValidationError("This package requires an IP assignment.")
     if ip_address_id is not None and network_id is not None:
         raise ProTrackValidationError("Provide only one of ip_address_id or network_id.")
-
-    occupied = _open_assignment_asset_ids(db, on_date)
-    for asset in assets:
-        if asset.id in occupied:
-            raise ProTrackValidationError(
-                f"Asset {asset.asset_number} is already assigned."
-            )
-        if asset.status in UNAVAILABLE_ASSET_STATUSES:
-            raise ProTrackValidationError(
-                f"Asset {asset.asset_number} is not available (status={asset.status})."
-            )
     return assets
 
 
@@ -532,6 +535,7 @@ def assign_package(
                 commit=False,
             )
             shift_assignment_id = str(shift_row.id)
+        window_shift_id = _effective_shift_id(db, user_id, shift_id, on_date)
 
         for asset in assets:
             assignment = it_asset_service.assign_asset(
@@ -541,7 +545,7 @@ def assign_package(
                 by_user=actor,
                 assigned_date=on_date,
                 notes=notes,
-                shift_id=shift_id,
+                shift_id=window_shift_id,
                 commit=False,
             )
             created_asset_ids.append(str(asset.id))
@@ -562,7 +566,7 @@ def assign_package(
                 computer_id=computer_id,
                 assigned_date=on_date,
                 notes=notes,
-                shift_id=shift_id,
+                shift_id=window_shift_id,
                 actor=actor,
                 commit=False,
             )

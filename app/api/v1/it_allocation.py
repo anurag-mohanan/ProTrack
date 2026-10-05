@@ -130,6 +130,28 @@ def check_allocation(
     return result
 
 
+@router.get("/employees")
+def assignable_employees(
+    on_date: date | None = Query(None),
+    status_filter: str = Query("active", alias="status"),
+    shift: str | None = None,
+    department_id: UUID | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employee picker for every assign dialog: the full User master with current shift."""
+    from app.services import employee_directory_service as directory
+
+    _require_view(db, current_user)
+    try:
+        return directory.employee_roster(
+            db, on_date=on_date, status=status_filter, shift=shift, department_id=department_id, q=q
+        )
+    except ProTrackValidationError as exc:
+        raise _fail(exc) from exc
+
+
 @router.get("/schedule/asset/{asset_id}")
 def asset_schedule(
     asset_id: UUID,

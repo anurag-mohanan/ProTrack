@@ -1448,6 +1448,9 @@ def assign_asset(
     user = db.get(User, user_id)
     if user is None or user.is_deleted:
         raise ProTrackValidationError("Assignee user not found.")
+    ineligible = engine.employee_block(db, user_id)
+    if ineligible:
+        raise ProTrackValidationError(ineligible)
 
     engine.lock_resource(db, asset)
     when = assigned_date or date.today()

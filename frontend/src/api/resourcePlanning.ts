@@ -288,8 +288,8 @@ export const resourcePlanningQueryKeys = {
   shiftHierarchy: (params?: { team_id?: string; on_date?: string }) =>
     ['resource-planning', 'shift-hierarchy', params ?? {}] as const,
   packages: () => ['resource-planning', 'packages'] as const,
-  packagePreview: (packageId: string, userId: string) =>
-    ['resource-planning', 'package-preview', packageId, userId] as const,
+  packagePreview: (packageId: string, userId: string, shiftId?: string) =>
+    ['resource-planning', 'package-preview', packageId, userId, shiftId ?? ''] as const,
 };
 
 export async function fetchPlanningPackages(): Promise<ResourcePackage[]> {
@@ -297,10 +297,14 @@ export async function fetchPlanningPackages(): Promise<ResourcePackage[]> {
   return data;
 }
 
-export async function previewResourcePackage(packageId: string, userId: string): Promise<ResourcePackagePreview> {
+export async function previewResourcePackage(
+  packageId: string,
+  userId: string,
+  shiftId?: string,
+): Promise<ResourcePackagePreview> {
   const { data } = await apiClient.post<ResourcePackagePreview>(
     `/dashboard/resource-planning/packages/${packageId}/preview`,
-    { user_id: userId },
+    { user_id: userId, shift_id: shiftId || null },
   );
   return data;
 }

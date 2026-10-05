@@ -17,12 +17,11 @@ import {
   type StockAction,
 } from '../../../api/itInventory';
 import { fetchMasterSuppliers } from '../../../api/itOperations';
-import { fetchUsers } from '../../../api/lookups';
+import { useAssignableEmployees } from '../../common/employeeDirectory';
 import { getErrorMessage } from '../../../api/client';
 import { useToast } from '../../../context/ToastContext';
 import { FormField, FormSelect } from '../../ui/design-system';
 import { ProsohmButton } from '../../ui/ProsohmButton';
-import { userDisplayName } from '../../../utils/format';
 import { STOCK_ACTION_LABELS } from './inventoryFormat';
 
 type Props = {
@@ -52,11 +51,7 @@ function StockActionForm({ itemId, action, onClose }: { itemId: string; action: 
 
   const itemQuery = useQuery({ queryKey: itInventoryKeys.item(itemId), queryFn: () => fetchStockItem(itemId) });
   const needsUsers = action === 'issue' || action === 'reserve' || action === 'return';
-  const usersQuery = useQuery({
-    queryKey: ['lookups', 'users'],
-    queryFn: () => fetchUsers(),
-    enabled: needsUsers,
-  });
+  const employees = useAssignableEmployees(needsUsers);
   const suppliersQuery = useQuery({
     queryKey: ['it-master', 'suppliers', 'active'],
     queryFn: () => fetchMasterSuppliers({ active_only: true }),
@@ -69,13 +64,7 @@ function StockActionForm({ itemId, action, onClose }: { itemId: string; action: 
   });
 
   const item = itemQuery.data;
-  const userOptions = useMemo(
-    () =>
-      (usersQuery.data ?? [])
-        .filter((u) => u.is_active !== false)
-        .map((u) => ({ value: u.id, label: userDisplayName(u) || u.email || u.id })),
-    [usersQuery.data],
-  );
+  const userOptions = employees.options;
   const openIssues = useMemo(
     () =>
       (item?.recent_movements ?? []).filter(

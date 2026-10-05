@@ -1,5 +1,8 @@
 import type {
+  EmployeeRoster,
+  EmployeeRosterParams,
   Shift,
+  ShiftCapacity,
   ShiftAssignment,
   ShiftAssignmentBulkPayload,
   ShiftAssignmentBulkResult,
@@ -132,8 +135,20 @@ export async function fetchShiftBoard(params?: {
   return data;
 }
 
+export async function fetchEmployeeRoster(params?: EmployeeRosterParams): Promise<EmployeeRoster> {
+  const { data } = await apiClient.get<EmployeeRoster>(`${BASE}/roster${buildQuery({ ...params })}`);
+  return data;
+}
+
+export async function fetchShiftCapacity(params?: { date?: string }): Promise<ShiftCapacity> {
+  const { data } = await apiClient.get<ShiftCapacity>(`${BASE}/capacity${buildQuery(params)}`);
+  return data;
+}
+
 export const resourceShiftKeys = {
   all: ['resource-shifts'] as const,
+  roster: (params?: EmployeeRosterParams) => ['resource-shifts', 'roster', params ?? {}] as const,
+  capacity: (params?: { date?: string }) => ['resource-shifts', 'capacity', params ?? {}] as const,
   shifts: (params?: { active_only?: boolean }) =>
     ['resource-shifts', 'masters', params ?? {}] as const,
   assignments: (params?: Record<string, unknown>) =>

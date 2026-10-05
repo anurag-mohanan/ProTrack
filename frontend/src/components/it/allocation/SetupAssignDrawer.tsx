@@ -7,13 +7,13 @@ import { assignSetup, itAllocationKeys } from '../../../api/itAllocation';
 import { getErrorMessage } from '../../../api/client';
 import { fetchAssets, fetchSoftwareLicenses, itOperationsKeys } from '../../../api/itOperations';
 import { itInventoryKeys } from '../../../api/itInventory';
-import { fetchUsers } from '../../../api/lookups';
 import { fetchShifts } from '../../../api/resourceShifts';
 import { useToast } from '../../../context/ToastContext';
 import type { AllocationResourceType, SetupAssignResult, SetupLineInput } from '../../../types/itAllocation';
-import { userDisplayName } from '../../../utils/format';
 import { FormDrawer, FormField, FormSelect } from '../../ui/design-system';
 import { ProsohmButton } from '../../ui/ProsohmButton';
+import { EmployeePicker } from '../../common/EmployeePicker';
+import type { EmployeeRosterRow } from '../../../types/ResourceShifts';
 import { AllocationWindowFields } from './AllocationWindowFields';
 import { emptyWindow, windowReady, windowToInput, type AllocationWindowState } from './allocationWindow';
 
@@ -41,6 +41,7 @@ export function SetupAssignDrawer({ open, onClose }: Props) {
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useToast();
   const [userId, setUserId] = useState('');
+  const [employee, setEmployee] = useState<EmployeeRosterRow | null>(null);
   const [slot, setSlot] = useState<AllocationWindowState>(() => emptyWindow('shift'));
   const [purpose, setPurpose] = useState('');
   const [allowPartial, setAllowPartial] = useState(false);
@@ -50,7 +51,6 @@ export function SetupAssignDrawer({ open, onClose }: Props) {
   const [pick, setPick] = useState('');
   const [result, setResult] = useState<SetupAssignResult | null>(null);
 
-  const usersQuery = useQuery({ queryKey: ['lookups', 'users'], queryFn: () => fetchUsers(), enabled: open });
   const shiftsQuery = useQuery({
     queryKey: ['resource-shifts', 'list', 'active'],
     queryFn: () => fetchShifts({ active_only: true }),
@@ -67,10 +67,6 @@ export function SetupAssignDrawer({ open, onClose }: Props) {
     enabled: open && lineType === 'license',
   });
 
-  const userOptions = useMemo(
-    () => (usersQuery.data ?? []).map((u) => ({ value: u.id, label: userDisplayName(u) || u.email || u.id })),
-    [usersQuery.data],
-  );
   const pickOptions = useMemo(() => {
     const taken = new Set(lines.map((l) => `${l.resource_type}:${l.resource_id}`));
     if (lineType === 'asset') {
@@ -95,6 +91,7 @@ export function SetupAssignDrawer({ open, onClose }: Props) {
 
   const reset = () => {
     setUserId('');
+    setEmployee(null);
     setSlot(emptyWindow('shift'));
     setPurpose('');
     setAllowPartial(false);
@@ -175,17 +172,23 @@ export function SetupAssignDrawer({ open, onClose }: Props) {
       width={620}
     >
       <Stack spacing={2}>
-        <FormSelect
-          label="Employee"
+        <EmployeePicker
           required
-          searchable
           value={userId}
-          onChange={(e) => {
-            setUserId(String(e.target.value));
+          onChange={(row) => {
+            setEmployee(row);
+            setUserId(row?.user_id ?? '');
             setResult(null);
+            setSlot((current) =>
+              current.mode === 'shift' ? { ...current, shiftId: row?.shift_id ?? '' } : current,
+            );
           }}
-          options={userOptions}
         />
+        {employee && employee.shift_state === 'NOT_ASSIGNED' ? (
+          <Typography variant="body2" color="warning.main">
+            {employee.name} has no shift assigned. Choose the shift or time window this setup is for.
+          </Typography>
+        ) : null}
         <AllocationWindowFields
           value={slot}
           onChange={(next) => {

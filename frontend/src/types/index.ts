@@ -75,104 +75,7 @@ export interface OrgDepartmentCreate {
 
 export type OrgDepartmentUpdate = Partial<OrgDepartmentCreate>;
 
-export type TicketCategory = 'it' | 'facility' | 'admin' | 'hr' | 'other';
-export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type TicketStatus =
-  | 'open'
-  | 'in_progress'
-  | 'on_hold'
-  | 'resolved'
-  | 'closed'
-  | 'cancelled';
-
-export interface TicketComment {
-  id: string;
-  ticket_id: string;
-  author_id: string;
-  author_name: string | null;
-  body: string;
-  is_internal: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Ticket {
-  id: string;
-  ticket_number: string;
-  title: string;
-  description: string | null;
-  category: TicketCategory;
-  category_label: string;
-  priority: TicketPriority;
-  status: TicketStatus;
-  status_label: string;
-  requester_id: string;
-  requester_name: string | null;
-  assignee_id: string | null;
-  assignee_name: string | null;
-  org_department_id: string | null;
-  location: string | null;
-  due_date: string | null;
-  resolution: string | null;
-  resolved_at: string | null;
-  closed_at: string | null;
-  comment_count: number;
-  can_manage: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TicketDetail extends Ticket {
-  comments: TicketComment[];
-}
-
-export interface TicketCreate {
-  title: string;
-  description?: string | null;
-  category: TicketCategory;
-  priority?: TicketPriority;
-  location?: string | null;
-  due_date?: string | null;
-  org_department_id?: string | null;
-}
-
-export interface TicketUpdate {
-  title?: string;
-  description?: string | null;
-  category?: TicketCategory;
-  priority?: TicketPriority;
-  status?: TicketStatus;
-  assignee_id?: string | null;
-  location?: string | null;
-  due_date?: string | null;
-  resolution?: string | null;
-}
-
-export interface TicketCategoryRoute {
-  category: TicketCategory;
-  category_label: string;
-  assignee_user_id: string | null;
-  assignee_name: string | null;
-  org_department_id: string | null;
-  fallback_roles: string[];
-}
-
-export interface TicketCategoryRouteUpdate {
-  assignee_user_id?: string | null;
-  org_department_id?: string | null;
-}
-
-export interface TicketStats {
-  total: number;
-  open: number;
-  in_progress: number;
-  on_hold: number;
-  resolved: number;
-  closed: number;
-  cancelled: number;
-  assigned_to_me: number;
-  raised_by_me: number;
-}
+export * from './tickets';
 
 export interface UserTeamAssignment {
   id?: string;
@@ -182,6 +85,20 @@ export interface UserTeamAssignment {
   is_primary: boolean;
   include_in_timesheet_reports?: boolean;
   created_at?: string;
+}
+
+export type UserType = 'employee' | 'virtual';
+
+export interface UserTypeImpact {
+  user_id: string;
+  current_type: UserType;
+  target_type: UserType;
+  changes: boolean;
+  open_asset_assignments: number;
+  active_shift_assignments: number;
+  open_project_assignments: number;
+  requires_timesheet: boolean;
+  effects: string[];
 }
 
 export interface User {
@@ -237,6 +154,8 @@ export interface User {
   default_working_model_id?: string | null;
   requires_timesheet?: boolean;
   requires_salary?: boolean;
+  /** Virtual = shared/system/test account: keeps permissions, excluded from HR, shifts, IT, timesheet compliance. */
+  user_type?: UserType;
   kpi_configuration?: {
     operational_role_type_id?: string | null;
     operational_role_name?: string | null;

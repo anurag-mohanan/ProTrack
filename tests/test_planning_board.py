@@ -1,5 +1,7 @@
 """Planning Board monitor role — read-only wall display access."""
 
+from datetime import date, timedelta
+
 from tests.conftest import IDS, login
 
 
@@ -138,7 +140,10 @@ def test_planning_board_cannot_create_timesheet(client):
     response = client.post(
         "/api/v1/timesheets",
         headers=headers,
-        json={"user_id": str(IDS["user_planning_board"]), "week_start": "2026-06-16"},
+        json={
+            "user_id": str(IDS["user_planning_board"]),
+            "week_start": (date.today() - timedelta(days=date.today().weekday())).isoformat(),
+        },
     )
     assert response.status_code == 403
 
@@ -150,7 +155,8 @@ def test_planning_board_defaults_have_no_write_specials():
         default_special_permissions_for_role,
     )
 
-    assert default_modules_for_role(PLANNING_BOARD) == ["planning_board"]
+    # Help Desk (tickets) is company-wide, including the Planning Board account.
+    assert default_modules_for_role(PLANNING_BOARD) == ["planning_board", "tickets"]
     assert default_special_permissions_for_role(PLANNING_BOARD) == []
 
 

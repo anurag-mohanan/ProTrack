@@ -42,8 +42,10 @@ from app.models.enums import (
     SkillProficiency,
     TaskTypeFunctionCategory,
     TeamRelationshipType,
+    TemplateSchedulingMode,
     TimesheetStatus,
     UserAvailabilityStatus,
+    UserType,
     WorkCategory,
     ContributionReason,
     PostCompletionWorkType,
@@ -216,6 +218,14 @@ class User(Base, TimestampMixin, TenantMixin):
     )
     requires_salary: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
+    )
+    # Virtual/system accounts keep role access but are excluded from people
+    # processes (HR headcount, shifts, IT allocation, timesheets, capacity).
+    user_type: Mapped[UserType] = mapped_column(
+        Enum(UserType, name="user_type", native_enum=False),
+        nullable=False,
+        default=UserType.employee,
+        server_default=UserType.employee.value,
     )
     default_working_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
@@ -474,6 +484,9 @@ class Team(Base, TimestampMixin, TenantMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_post_completion_timesheet: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
+    )
+    projects_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
     )
     # Future: offices, business units, companies (Part 12)
     organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -829,7 +842,9 @@ class Customer(Base, TimestampMixin, TenantMixin):
         cascade="all, delete-orphan",
         order_by="CustomerPaymentMilestone.sequence",
     )
-    projects: Mapped[list[Project]] = relationship(back_populates="customer")
+    projects: Mapped[list[Project]] = relationship(
+        back_populates="customer", foreign_keys="Project.customer_id"
+    )
     project_templates: Mapped[list[ProjectTemplate]] = relationship(
         back_populates="customer",
         foreign_keys="ProjectTemplate.customer_id",
@@ -967,6 +982,23 @@ class ProjectTemplate(Base, TimestampMixin, TenantMixin):
     )
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Versioning: every revision of a template shares one family id; at most one
+    # version per family is active and new projects always use that version.
+    template_family_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    revision_note: Mapped[Optional[str]] = mapped_column(Text)
+    scheduling_mode: Mapped[TemplateSchedulingMode] = mapped_column(
+        Enum(TemplateSchedulingMode, name="template_scheduling_mode", native_enum=False),
+        nullable=False,
+        default=TemplateSchedulingMode.sequential,
+        server_default=TemplateSchedulingMode.sequential.value,
+    )
+    activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
     project_type: Mapped[ProjectType] = relationship(back_populates="templates")
     customer: Mapped[Optional[Customer]] = relationship(
@@ -1010,6 +1042,8 @@ class ProjectTemplateMilestone(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     is_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # JSON list of sibling template-milestone ids that must finish first.
+    depends_on_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     template: Mapped[ProjectTemplate] = relationship(back_populates="milestones")
     default_assigned_user: Mapped[Optional[User]] = relationship(
@@ -1096,6 +1130,21 @@ class Project(Base, TimestampMixin, TenantMixin):
         Numeric(8, 2), nullable=False, default=Decimal("0")
     )
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # --- Schedule: start, approved baseline, forecast and actual are kept apart ---
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True
+    )
+    baseline_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    baseline_completion_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    baseline_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    forecast_completion_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    forecast_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    forecast_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    forecast_calculated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    actual_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     execution_status: Mapped[ExecutionStatus] = mapped_column(
         "status",
         Enum(ExecutionStatus, name="project_status", native_enum=False),
@@ -1156,7 +1205,10 @@ class Project(Base, TimestampMixin, TenantMixin):
         Boolean, nullable=False, default=False, server_default="0"
     )
 
-    customer: Mapped[Customer] = relationship(back_populates="projects")
+    customer: Mapped[Customer] = relationship(
+        back_populates="projects", foreign_keys=[customer_id]
+    )
+    end_customer: Mapped[Optional[Customer]] = relationship(foreign_keys=[end_customer_id])
     customer_contact: Mapped[Contact] = relationship(back_populates="projects")
     design_leader: Mapped[User] = relationship(
         back_populates="design_leader_projects", foreign_keys=[design_leader_id]
@@ -1241,6 +1293,26 @@ class Milestone(Base, TimestampMixin, TenantMixin):
         Enum(ProjectStage, name="milestone_project_stage", native_enum=False),
         nullable=True,
     )
+    template_milestone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
+    # JSON list of milestone ids (same project) that must finish first.
+    depends_on_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Estimates: original is set once at generation; planned_hours is the current approved.
+    original_planned_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    estimate_basis: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    baseline_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    baseline_finish_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    forecast_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    forecast_finish_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    actual_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    override_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    override_finish_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    override_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    override_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    override_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="milestones")
     assigned_user: Mapped[Optional[User]] = relationship(
@@ -1249,6 +1321,90 @@ class Milestone(Base, TimestampMixin, TenantMixin):
     timesheet_entries: Mapped[list[TimesheetEntry]] = relationship(
         back_populates="milestone"
     )
+
+
+class ProjectStageEstimate(Base, TimestampMixin, TenantMixin):
+    """Planned effort per project stage. ``original_hours`` is never overwritten."""
+
+    __tablename__ = "project_stage_estimates"
+    __table_args__ = (
+        UniqueConstraint("project_id", "stage", name="uq_project_stage_estimates_stage"),
+        CheckConstraint("original_hours >= 0", name="ck_project_stage_estimates_original"),
+        CheckConstraint("current_hours >= 0", name="ck_project_stage_estimates_current"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    stage: Mapped[ProjectStage] = mapped_column(
+        Enum(ProjectStage, name="project_stage_estimate_stage", native_enum=False),
+        nullable=False,
+    )
+    original_hours: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    current_hours: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+
+class ProjectEstimateRevision(Base, TimestampMixin, TenantMixin):
+    """Audit trail for approved changes to a stage's current estimate."""
+
+    __tablename__ = "project_estimate_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    stage: Mapped[ProjectStage] = mapped_column(
+        Enum(ProjectStage, name="project_estimate_revision_stage", native_enum=False),
+        nullable=False,
+    )
+    previous_hours: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    new_hours: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    revised_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    revised_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ProjectBaselineRevision(Base, TimestampMixin, TenantMixin):
+    """Who approved a baseline, when and why — with the milestone dates it replaced."""
+
+    __tablename__ = "project_baseline_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    previous_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    previous_completion_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    new_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    new_completion_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_milestones_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    revised_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    revised_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class ProjectStageHistory(Base, TimestampMixin, TenantMixin):

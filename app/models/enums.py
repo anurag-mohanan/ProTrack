@@ -9,6 +9,39 @@ class ProjectStage(enum.Enum):
     completed = "completed"
 
 
+#: Project stages that carry planned effort (Blockout, Intermediate Design, Final Design).
+PLANNED_STAGES: tuple[ProjectStage, ...] = (
+    ProjectStage.preliminary,
+    ProjectStage.intermediate,
+    ProjectStage.final,
+)
+
+PLANNED_STAGE_LABELS: dict[ProjectStage, str] = {
+    ProjectStage.preliminary: "Blockout",
+    ProjectStage.intermediate: "Intermediate Design",
+    ProjectStage.final: "Final Design",
+}
+
+
+class UserType(enum.Enum):
+    """Employee users are people; virtual users are shared or system accounts."""
+
+    employee = "employee"
+    virtual = "virtual"
+
+
+class TemplateSchedulingMode(enum.Enum):
+    sequential = "sequential"
+    dependencies = "dependencies"
+
+
+class ForecastStatus(enum.Enum):
+    provisional = "provisional"
+    unconfigured = "unconfigured"
+    invalid = "invalid"
+    completed = "completed"
+
+
 class ExecutionStatus(enum.Enum):
     planning = "planning"
     currently_being_worked_on = "currently_being_worked_on"
@@ -189,6 +222,7 @@ class ActivityAction(enum.Enum):
     user_deleted = "user_deleted"
     user_restored_from_deleted = "user_restored_from_deleted"
     user_department_changed = "user_department_changed"
+    user_type_changed = "user_type_changed"
     user_historical_correction = "user_historical_correction"
     employee_offboard_scheduled = "employee_offboard_scheduled"
     employee_offboard_applied = "employee_offboard_applied"

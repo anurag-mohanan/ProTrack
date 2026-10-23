@@ -762,10 +762,12 @@ def period_tool_hours(
     }
     project_ids = list(hours_by_project.keys())
 
+    # Team-scoped project lists show projects the team owns; a member's hours on
+    # another team's project stay in that member's totals but not in this list.
     stmt = (
         select(Project, Customer.name)
         .join(Customer, Project.customer_id == Customer.id)
-        .where(Project.id.in_(project_ids))
+        .where(Project.id.in_(project_ids), *_project_scope_clauses(scope))
     )
     if not include_deleted:
         stmt = stmt.where(Project.is_deleted.is_(False))

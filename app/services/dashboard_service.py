@@ -281,11 +281,21 @@ def get_dashboard_kpis(
             func.count().filter(overdue),
             func.count().filter(archived),
             func.coalesce(func.sum(Project.quoted_hours).filter(and_(*live)), 0),
-            func.coalesce(func.sum(Project.actual_hours).filter(and_(*live)), 0),
         ).select_from(Project)
     ).one()
 
-    total_actual_hours = _round_hours(_decimal(project_row[8]))
+    # Same source as the project table's actual hours: every non-deleted timesheet
+    # entry on the project, not the cached Project.actual_hours column.
+    total_actual_hours = _round_hours(
+        _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
+                .select_from(TimesheetEntry)
+                .join(Project, Project.id == TimesheetEntry.project_id)
+                .where(TimesheetEntry.is_deleted.is_(False), *live)
+            )
+        )
+    )
 
     np_hours_this_month = _round_hours(
         _decimal(

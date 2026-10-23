@@ -31,6 +31,8 @@ export interface ProjectTeamStreamSection {
 
 export interface TeamStreamHierarchyOptions extends GroupProjectsByTeamOptions {
   preferredStreamOrder?: string[];
+  /** Teams to show even with no projects, so an empty team is visible rather than missing. */
+  emptyTeamIds?: string[];
 }
 
 function streamNameFor(
@@ -117,7 +119,7 @@ export function groupProjectsByTeamThenStream(
   const streamNameById = new Map(streams.map((stream) => [stream.id, stream.name]));
   const teamGroups = groupProjectsByTeam(projects, teams, users, options);
 
-  return teamGroups
+  const sections = teamGroups
     .map((group: ProjectTeamGroup) => {
       const streamSections = groupProjectsByStream(
         group.projects,
@@ -152,6 +154,34 @@ export function groupProjectsByTeamThenStream(
       };
     })
     .filter((section) => section.streams.length > 0);
+
+  const present = new Set(sections.map((section) => section.teamId));
+  const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
+  const empties: ProjectTeamStreamSection[] = (options.emptyTeamIds ?? [])
+    .filter((teamId) => !present.has(teamId) && teamNameById.has(teamId))
+    .map((teamId) => ({
+      teamId,
+      teamName: teamNameById.get(teamId) as string,
+      streams: [],
+      activeCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      fullDesignCount: 0,
+      smallTaskCount: 0,
+    }));
+  if (!empties.length) return sections;
+
+  const merged = [...sections, ...empties];
+  const leaderOrder = options.leaderTeamIds ?? [];
+  if (leaderOrder.length) {
+    const rank = (teamId: string | null) => {
+      if (teamId == null) return Number.MAX_SAFE_INTEGER;
+      const index = leaderOrder.indexOf(teamId);
+      return index >= 0 ? index : leaderOrder.length;
+    };
+    return merged.sort((left, right) => rank(left.teamId) - rank(right.teamId));
+  }
+  return merged.sort((left, right) => left.teamName.localeCompare(right.teamName));
 }
 
 function groupProjectsByStream(

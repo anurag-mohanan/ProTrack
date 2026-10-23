@@ -14,6 +14,8 @@ class TeamBase(BaseModel):
     colour: str = Field(default="#1976d2", max_length=20)
     is_active: bool = True
     allow_post_completion_timesheet: bool = True
+    # Whether the team appears on the Projects page and can own projects.
+    projects_enabled: bool = True
     organization_id: UUID | None = None
     business_unit: str | None = Field(default=None, max_length=100)
 
@@ -29,6 +31,7 @@ class TeamUpdate(BlankOptionalFieldsMixin, BaseModel):
     colour: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
     allow_post_completion_timesheet: bool | None = None
+    projects_enabled: bool | None = None
     organization_id: UUID | None = None
     business_unit: str | None = Field(default=None, max_length=100)
 

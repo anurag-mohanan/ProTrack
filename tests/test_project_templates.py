@@ -39,6 +39,7 @@ def _create_project_payload(
     return {
         "tool_number": f"T-{uuid.uuid4().hex[:6]}",
         "part_description": "Template test part",
+        "project_classification": "full_design",
         "customer_id": str(customer_id),
         "customer_contact_id": str(contact_id),
         "design_leader_id": str(IDS["user_anurag"]),

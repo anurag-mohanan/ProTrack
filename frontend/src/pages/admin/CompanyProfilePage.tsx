@@ -44,6 +44,7 @@ type CompanyFormState = {
   financial_year_start_month: number;
   default_working_hours_per_day: number;
   default_working_days: string;
+  scheduling_effort_hours_per_day: string;
   logo_url: string;
 };
 
@@ -55,7 +56,7 @@ export default function CompanyProfilePage() {
     queryKey: ['settings', 'legal-entities'],
     queryFn: fetchLegalEntities,
   });
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CompanyFormState>({
     company_name: '',
     company_short_name: '',
     email: '',
@@ -68,6 +69,7 @@ export default function CompanyProfilePage() {
     financial_year_start_month: 4,
     default_working_hours_per_day: 8,
     default_working_days: 'Mon,Tue,Wed,Thu,Fri',
+    scheduling_effort_hours_per_day: '',
     logo_url: '',
   });
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
@@ -91,6 +93,10 @@ export default function CompanyProfilePage() {
         financial_year_start_month: query.data.financial_year_start_month,
         default_working_hours_per_day: Number(query.data.default_working_hours_per_day),
         default_working_days: query.data.default_working_days,
+        scheduling_effort_hours_per_day:
+          query.data.scheduling_effort_hours_per_day == null
+            ? ''
+            : String(Number(query.data.scheduling_effort_hours_per_day)),
         logo_url: query.data.logo_url ?? '',
       };
       const nextDays = query.data.default_working_days.split(',').filter(Boolean);
@@ -119,6 +125,10 @@ export default function CompanyProfilePage() {
       updateCompanySettings({
         ...form,
         default_working_days: selectedDays.join(','),
+        scheduling_effort_hours_per_day:
+          form.scheduling_effort_hours_per_day === ''
+            ? null
+            : Number(form.scheduling_effort_hours_per_day),
       }),
     onSuccess: async () => {
       showSuccess('Company information saved');
@@ -328,6 +338,21 @@ export default function CompanyProfilePage() {
                       setForm((current) => ({
                         ...current,
                         default_working_hours_per_day: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <FormField
+                    type="number"
+                    label="Scheduling effort hours / day"
+                    value={form.scheduling_effort_hours_per_day}
+                    slotProps={{ htmlInput: { min: 0.5, max: 24, step: 0.5 } }}
+                    helper={`Productive hours assumed per milestone per working day for provisional forecasts. Blank uses Working Hours / Day (${form.default_working_hours_per_day}).`}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        scheduling_effort_hours_per_day: event.target.value,
                       }))
                     }
                   />

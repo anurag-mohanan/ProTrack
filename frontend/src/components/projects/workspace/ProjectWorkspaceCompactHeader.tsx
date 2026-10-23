@@ -3,7 +3,7 @@ import type { Project } from '../../../types';
 import { PROJECT_STAGE_LABELS } from '../../../types/common';
 import { designTokens } from '../../../theme/designTokens';
 import { APP_TOP_BAR_OFFSET } from '../../ui/design-system/StickyRecordHeader';
-import { formatDisplayValue, formatNumber } from '../../../utils/format';
+import { formatDate, formatDisplayValue, formatNumber } from '../../../utils/format';
 
 interface ProjectWorkspaceCompactHeaderProps {
   project: Project;
@@ -53,6 +53,7 @@ export function ProjectWorkspaceCompactHeader({ project }: ProjectWorkspaceCompa
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap>
             {formatDisplayValue(project.customer_name)}
+            {project.end_customer_name ? ` · End customer: ${project.end_customer_name}` : ''}
           </Typography>
         </Box>
 
@@ -67,6 +68,11 @@ export function ProjectWorkspaceCompactHeader({ project }: ProjectWorkspaceCompa
         >
           <MetaItem label="Designer" value={formatDisplayValue(project.designer_name)} />
           <MetaItem label="Surfacer" value={formatDisplayValue(project.surfacer_name)} />
+          <MetaItem label="Start" value={formatDate(project.start_date)} />
+          <MetaItem
+            label={project.forecast_status === 'provisional' ? 'Forecast (provisional)' : 'Forecast'}
+            value={formatDate(project.forecast_completion_date)}
+          />
           <MetaItem label="Quoted" value={`${formatNumber(project.quoted_hours, 0)} hrs`} />
           <MetaItem label="Actual" value={`${formatNumber(project.actual_hours, 0)} hrs`} />
           <MetaItem label="Status" value={stageLabel} />

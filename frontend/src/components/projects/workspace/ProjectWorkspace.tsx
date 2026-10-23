@@ -8,6 +8,7 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import TimelineRoundedIcon from '@mui/icons-material/TimelineRounded';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
@@ -28,11 +29,14 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import {
   accessContextFromUser,
+  canApproveBaselines,
   canArchiveProject,
   canDeleteProject,
   canEditProject,
+  canReviseEstimates,
   ROLES,
 } from '../../../utils/permissions';
+import { ProjectStagePlanPanel } from './ProjectStagePlanPanel';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
@@ -53,6 +57,7 @@ import type { Activity } from '../../../types';
 const TABS = [
   { id: 'overview', label: 'Overview', icon: FolderRoundedIcon },
   { id: 'milestones', label: 'Milestones', icon: FlagRoundedIcon },
+  { id: 'stage-plan', label: 'Stage Plan', icon: TimelineRoundedIcon },
   { id: 'team', label: 'Team', icon: GroupsRoundedIcon },
   { id: 'timesheets', label: 'Timesheets', icon: ScheduleRoundedIcon },
   { id: 'activity', label: 'Activity Log', icon: HistoryRoundedIcon },
@@ -191,6 +196,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           meta={
             <Typography variant="caption" color="text.secondary">
               Quoted {project.quoted_hours}h
+              {project.end_customer_name ? ` · End customer: ${project.end_customer_name}` : ''}
             </Typography>
           }
         />
@@ -293,6 +299,15 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
           projectId={projectId}
           canEdit={canEditMilestones}
           canEditProgress={canEditProgress}
+        />
+      ) : null}
+
+      {tab === 'stage-plan' ? (
+        <ProjectStagePlanPanel
+          projectId={projectId}
+          canEdit={showEditProject && !project.is_deleted}
+          canRevise={showEditProject && canReviseEstimates(access) && !project.is_deleted}
+          canApproveBaseline={showEditProject && canApproveBaselines(access) && !project.is_deleted}
         />
       ) : null}
 

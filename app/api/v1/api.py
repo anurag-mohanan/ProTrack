@@ -30,6 +30,7 @@ from app.api.v1 import (
     exit_process,
     org_departments,
     preferences,
+    project_planning,
     project_templates,
     project_types,
     working_models,
@@ -149,6 +150,7 @@ api_router.include_router(project_types.router)
 api_router.include_router(working_models.router)
 api_router.include_router(project_templates.router)
 api_router.include_router(projects.router)
+api_router.include_router(project_planning.router)
 api_router.include_router(milestones.router)
 api_router.include_router(timesheets.router)
 api_router.include_router(timesheet_entries.router)

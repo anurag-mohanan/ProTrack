@@ -30,6 +30,8 @@ class CompanySettingsRead(BaseModel):
     financial_year_start_month: int = 4
     default_working_hours_per_day: Decimal = Decimal("8")
     default_working_days: str = "Mon,Tue,Wed,Thu,Fri"
+    # Provisional-forecast assumption; null falls back to the working hours per day.
+    scheduling_effort_hours_per_day: Decimal | None = None
 
 
 class CompanySettingsUpdate(BaseModel):
@@ -46,6 +48,7 @@ class CompanySettingsUpdate(BaseModel):
     financial_year_start_month: int | None = Field(default=None, ge=1, le=12)
     default_working_hours_per_day: Decimal | None = Field(default=None, gt=0, le=24)
     default_working_days: str | None = Field(default=None, max_length=50)
+    scheduling_effort_hours_per_day: Decimal | None = Field(default=None, gt=0, le=24)
 
 
 class PublicCompanySettingsRead(BaseModel):
@@ -53,6 +56,7 @@ class PublicCompanySettingsRead(BaseModel):
     company_short_name: str | None = None
     logo_url: str | None = None
     website: str | None = None
+    financial_year_start_month: int = 4
 
 
 class BrandingSettingsRead(BaseModel):

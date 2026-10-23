@@ -283,6 +283,9 @@ from app.db.phase105_inventory_virtual_seat_schema_sync import (
 from app.db.phase107_ticket_workflow_schema_sync import (
     ensure_phase107_ticket_workflow_foundation,
 )
+from app.db.phase108_engineering_management_schema_sync import (
+    ensure_phase108_engineering_management_foundation,
+)
 from app.db.phase106_shift_aware_allocation_schema_sync import (
     ensure_phase106_shift_aware_allocation_foundation,
 )
@@ -365,6 +368,10 @@ async def lifespan(app: FastAPI):
             ensure_phase106_shift_aware_allocation_foundation,
         ),
         ("phase107_ticket_workflow", ensure_phase107_ticket_workflow_foundation),
+        (
+            "phase108_engineering_management",
+            ensure_phase108_engineering_management_foundation,
+        ),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),
         ("timesheet_approval_comments", ensure_timesheet_approval_comments),
@@ -513,7 +520,7 @@ async def lifespan(app: FastAPI):
         ensure_engineering_streams(seed_session)
         ensure_project_small_task_types(seed_session)
         seed_session.commit()
-        ensure_project_types_and_templates(seed_session)
+        ensure_project_types_and_templates(seed_session, create_missing_customers=False)
         validate_project_template_health(seed_session)
     except Exception:
         seed_session.rollback()

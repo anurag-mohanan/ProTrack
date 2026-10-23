@@ -23,6 +23,8 @@ import {
 import { ProjectHoursReportView, ProjectClassificationReportView } from '../components/reports/ReportAnalyticsViews';
 import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
+import { EngineeringDataQualityPanel } from '../components/reports/EngineeringDataQualityPanel';
+import { EngineeringPerformancePanel } from '../components/reports/EngineeringPerformancePanel';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
 import { DesignerTeamTimesheetPanel } from '../components/reports/DesignerTeamTimesheetPanel';
 import { useAuth } from '../context/AuthContext';
@@ -43,8 +45,9 @@ import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
  * Legacy tab slugs redirect here so old bookmarks do not crash.
  */
 const TAB_CONFIG = [
+  { label: 'Engineering Performance', slug: 'engineering-performance' },
   { label: 'Timesheet Reports', slug: 'timesheet-reports' },
-  { label: 'Engineering Overview', slug: 'engineering-suite' },
+  { label: 'Operational Overview', slug: 'engineering-suite' },
   { label: 'Project Hours', slug: 'project-hours' },
   { label: 'Team Reports', slug: 'team-reports' },
   { label: 'Customer Timesheet Pack', slug: 'customer-timesheet-pack' },
@@ -117,23 +120,25 @@ export function ReportsPage() {
     include_deleted: appliedIncludeDeleted,
   };
 
+  const activeSlug: TabSlug = TAB_CONFIG[tab]?.slug ?? TAB_CONFIG[0].slug;
+  const performanceEnabled = activeSlug === 'engineering-performance';
+  const timesheetReportsEnabled = activeSlug === 'timesheet-reports';
+  const suiteEnabled = activeSlug === 'engineering-suite';
+  const projectHoursEnabled = activeSlug === 'project-hours';
+  const teamReportsEnabled = activeSlug === 'team-reports';
+  const customerTimesheetPackEnabled = activeSlug === 'customer-timesheet-pack';
+
   const projectHoursQuery = useGeneratedReportQuery({
     queryKey: reportQueryKeys.projectHours(reportOptions),
     queryFn: () => getProjectHoursReport(reportOptions),
-    ready: tab === 2,
+    ready: projectHoursEnabled,
   });
 
   const projectClassificationQuery = useGeneratedReportQuery({
     queryKey: reportQueryKeys.projectClassification(reportOptions),
     queryFn: () => getProjectClassificationReport(reportOptions),
-    ready: tab === 2,
+    ready: projectHoursEnabled,
   });
-
-  const timesheetReportsEnabled = tab === 0;
-  const suiteEnabled = tab === 1;
-  const projectHoursEnabled = tab === 2;
-  const teamReportsEnabled = tab === 3;
-  const customerTimesheetPackEnabled = tab === 4;
 
   const handleTabChange = (_: unknown, value: number) => {
     const config = TAB_CONFIG[value];
@@ -190,7 +195,7 @@ export function ReportsPage() {
     <PageContainer>
       <ModernPageHeader
         title="Reports"
-        subtitle="Timesheets, engineering overview, project hours, teams, and customer packs"
+        subtitle="Engineering performance, timesheets, operational overview, project hours, teams, and customer packs"
       />
 
       <FilterToolbar
@@ -213,6 +218,10 @@ export function ReportsPage() {
         })}
       </Tabs>
 
+      {performanceEnabled ? (
+        <EngineeringPerformancePanel canExport={canExport} includeArchived={appliedIncludeArchived} />
+      ) : null}
+
       {timesheetReportsEnabled ? (
         <DesignerTeamTimesheetPanel
           canExport={canExport}
@@ -222,11 +231,14 @@ export function ReportsPage() {
       ) : null}
 
       {suiteEnabled ? (
-        <EngineeringReportingSuite
-          canExport={canExport}
-          includeArchived={appliedIncludeArchived}
-          includeDeleted={appliedIncludeDeleted}
-        />
+        <Stack spacing={3}>
+          <EngineeringReportingSuite
+            canExport={canExport}
+            includeArchived={appliedIncludeArchived}
+            includeDeleted={appliedIncludeDeleted}
+          />
+          <EngineeringDataQualityPanel />
+        </Stack>
       ) : null}
 
       {projectHoursEnabled ? (

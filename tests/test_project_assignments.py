@@ -5,6 +5,7 @@ def _project_payload(project_type_mold_id: str, **overrides):
     payload = {
         "tool_number": "T-200",
         "part_description": "Assignment test part",
+        "project_classification": "full_design",
         "customer_id": str(IDS["customer"]),
         "customer_contact_id": str(IDS["contact"]),
         "design_leader_id": str(IDS["user_anurag"]),

@@ -11,7 +11,9 @@ import type {
   ProjectTemplateDetail,
   ProjectTemplateMatch,
   ProjectTemplateUpdatePayload,
+  ProjectTemplateVersion,
   ProjectType,
+  TemplatePreview,
 } from '../types/ProjectTemplate';
 
 export async function fetchProjectTypes(): Promise<ProjectType[]> {
@@ -107,6 +109,33 @@ export async function deactivateProjectTemplate(id: string): Promise<ProjectTemp
 export async function reactivateProjectTemplate(id: string): Promise<ProjectTemplate> {
   const { data } = await apiClient.post<ProjectTemplate>(
     `/project-templates/${id}/reactivate`,
+  );
+  return data;
+}
+
+export async function fetchProjectTemplateVersions(id: string): Promise<ProjectTemplateVersion[]> {
+  const { data } = await apiClient.get<unknown>(`/project-templates/${id}/versions`);
+  return ensureArray<ProjectTemplateVersion>(data);
+}
+
+export async function createProjectTemplateRevision(
+  id: string,
+  revisionNote: string | null,
+): Promise<ProjectTemplateDetail> {
+  const { data } = await apiClient.post<ProjectTemplateDetail>(
+    `/project-templates/${id}/revisions`,
+    { revision_note: revisionNote },
+  );
+  return data;
+}
+
+export async function previewProjectTemplate(
+  id: string,
+  payload: { start_date: string; stage_hours: Record<string, number> },
+): Promise<TemplatePreview> {
+  const { data } = await apiClient.post<TemplatePreview>(
+    `/project-templates/${id}/preview`,
+    payload,
   );
   return data;
 }

@@ -16,10 +16,10 @@ def test_operations_center_admin_access(client):
     assert payload["database"]["connected"] is True
 
 
-def test_operations_center_engineering_manager_read_only(client):
+def test_operations_center_is_admin_only_for_engineering_manager(client):
     em_headers = login(client, "pm@prosohm.com")
     response = client.get("/api/v1/system/operations", headers=em_headers)
-    assert response.status_code == 200
+    assert response.status_code == 403
 
     maintenance = client.post(
         "/api/v1/system/operations/maintenance",

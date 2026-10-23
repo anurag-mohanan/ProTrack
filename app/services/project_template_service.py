@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ProTrackValidationError
-from app.models.enums import MilestoneStatus
+from app.models.enums import MilestoneStatus, ProjectStage
 from app.models.models import (
     Customer,
     Milestone,
@@ -18,6 +18,24 @@ from app.models.models import (
     ProjectType,
     TimesheetEntry,
 )
+
+
+def active_version_of(db: Session, template: ProjectTemplate | None) -> ProjectTemplate | None:
+    """Return the active version in ``template``'s family (itself when active)."""
+    if template is None:
+        return None
+    if template.is_active:
+        return template
+    family_id = template.template_family_id or template.id
+    return db.scalar(
+        select(ProjectTemplate)
+        .where(
+            (ProjectTemplate.template_family_id == family_id) | (ProjectTemplate.id == family_id),
+            ProjectTemplate.is_active.is_(True),
+        )
+        .order_by(ProjectTemplate.version.desc())
+        .limit(1)
+    )
 
 
 def _template_has_milestones(db: Session, template_id: UUID) -> bool:
@@ -123,8 +141,8 @@ def resolve_template(
     template_id: UUID | None = None,
 ) -> ProjectTemplate:
     if template_id is not None:
-        template = db.get(ProjectTemplate, template_id)
-        if template is None or not template.is_active:
+        template = active_version_of(db, db.get(ProjectTemplate, template_id))
+        if template is None:
             raise ProTrackValidationError(
                 "project_template_id must reference an active project template"
             )
@@ -136,7 +154,9 @@ def resolve_template(
 
     customer = db.get(Customer, customer_id)
     if customer is not None and customer.default_project_template_id is not None:
-        default_template = db.get(ProjectTemplate, customer.default_project_template_id)
+        default_template = active_version_of(
+            db, db.get(ProjectTemplate, customer.default_project_template_id)
+        )
         if (
             default_template is not None
             and default_template.is_active
@@ -238,8 +258,15 @@ def create_milestones_from_template(
     project: Project,
     template: ProjectTemplate,
     anchor_date: date | None = None,
-) -> None:
-    anchor = anchor_date or date.today()
+    stage_hours: dict[ProjectStage, Decimal] | None = None,
+) -> list[str]:
+    """Generate the project's own milestone records from the template version.
+
+    Returns warnings about stage hours that could not be placed on milestones.
+    """
+    from app.services.scheduling_service import distribute_stage_hours, dump_id_list, parse_id_list
+
+    anchor = anchor_date or project.start_date or date.today()
     template_milestones = _load_ordered_template_milestones(db, template.id)
 
     if not template_milestones:
@@ -257,6 +284,8 @@ def create_milestones_from_template(
             "Add milestones in Admin → Project Templates before using it."
         )
 
+    estimates, warnings = distribute_stage_hours(template_milestones, stage_hours or {})
+    created: dict[str, Milestone] = {}
     for template_milestone in template_milestones:
         if template_milestone.is_visible is False:
             continue
@@ -273,26 +302,44 @@ def create_milestones_from_template(
                 project,
                 template_milestone.milestone_name,
             )
-        db.add(
-            Milestone(
-                project_id=project.id,
-                name=template_milestone.milestone_name,
-                description=template_milestone.description,
-                status=MilestoneStatus.not_started,
-                sort_order=template_milestone.sort_order,
-                due_date=due_date,
-                planned_hours=template_milestone.estimated_hours or Decimal("0"),
-                assigned_user_id=assigned_user_id,
-                assignment_manual=template_milestone.default_assigned_user_id is not None,
-                is_required=bool(template_milestone.is_required),
-                project_stage=template_milestone.project_stage,
-            )
+        estimate = estimates.get(template_milestone.id)
+        hours = estimate.hours if estimate else Decimal(str(template_milestone.estimated_hours or 0))
+        milestone = Milestone(
+            project_id=project.id,
+            name=template_milestone.milestone_name,
+            description=template_milestone.description,
+            status=MilestoneStatus.not_started,
+            sort_order=template_milestone.sort_order,
+            due_date=due_date,
+            planned_hours=hours,
+            original_planned_hours=hours,
+            estimate_basis=estimate.basis if estimate else None,
+            assigned_user_id=assigned_user_id,
+            assignment_manual=template_milestone.default_assigned_user_id is not None,
+            is_required=bool(template_milestone.is_required),
+            project_stage=template_milestone.project_stage,
+            template_milestone_id=template_milestone.id,
         )
+        db.add(milestone)
+        created[str(template_milestone.id)] = milestone
+    db.flush()
+    for template_milestone in template_milestones:
+        milestone = created.get(str(template_milestone.id))
+        if milestone is None:
+            continue
+        deps = [
+            str(created[dep].id)
+            for dep in parse_id_list(template_milestone.depends_on_ids)
+            if dep in created
+        ]
+        milestone.depends_on_ids = dump_id_list(deps)
+        db.add(milestone)
     from app.services.milestone_workspace_service import recalculate_project_planned_hours
     from app.services.milestone_assignment_service import sync_milestone_assignments
 
     recalculate_project_planned_hours(db, project.id)
     sync_milestone_assignments(db, project.id)
+    return warnings
 
 
 def project_has_completed_milestones(db: Session, project_id: UUID) -> bool:
@@ -338,6 +385,31 @@ def get_template_change_blockers(db: Session, project_id: UUID) -> list[str]:
             "Timesheet hours are logged against current milestones"
         )
     return blockers
+
+
+def projects_with_logged_milestone_hours(db: Session, project_ids: list[UUID]) -> set[UUID]:
+    if not project_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(Milestone.project_id)
+            .join(TimesheetEntry, TimesheetEntry.milestone_id == Milestone.id)
+            .where(
+                Milestone.project_id.in_(project_ids),
+                TimesheetEntry.is_deleted.is_(False),
+            )
+            .distinct()
+        ).all()
+    )
+
+
+def template_change_blocked_reason(*, has_completed_milestones: bool, has_logged_hours: bool) -> str | None:
+    """First blocker in the same order as ``get_template_change_blockers``."""
+    if has_completed_milestones:
+        return "At least one milestone has been marked completed"
+    if has_logged_hours:
+        return "Timesheet hours are logged against current milestones"
+    return None
 
 
 def can_change_project_template(db: Session, project_id: UUID) -> tuple[bool, str | None]:

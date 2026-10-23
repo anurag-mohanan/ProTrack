@@ -66,6 +66,7 @@ def list_users(
     is_active: bool | None = None,
     team_id: UUID | None = None,
     employment_type: str | None = None,
+    user_type: str | None = Query(None, pattern="^(employee|virtual)$"),
     search: str | None = None,
     include_archived: bool = False,
     include_deleted: bool = False,
@@ -92,6 +93,7 @@ def list_users(
         is_active=is_active,
         team_id=team_id,
         employment_type=employment_type,
+        user_type=user_type,
         search=search,
         include_archived=include_archived,
         include_deleted=include_deleted,
@@ -153,6 +155,80 @@ def get_user_profile_detail(
     if db_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return get_user_profile(db, db_user)
+
+
+@router.get("/{record_id}/user-type-impact")
+def user_type_change_impact(
+    record_id: UUID,
+    target: str = Query(..., pattern="^(employee|virtual)$"),
+    db: Session = Depends(get_db),
+):
+    """What changes if this account is reclassified. History is never removed."""
+    from datetime import date as _date
+
+    from sqlalchemy import func, or_, select
+
+    from app.models.enums import ExecutionStatus
+    from app.models.it_operations import AssetAssignment
+    from app.models.models import Project
+    from app.models.resource_shifts import ResourceShiftAssignment
+
+    db_user = get_object_or_404(user_crud, db, record_id)
+    current = db_user.user_type.value if db_user.user_type is not None else "employee"
+    today = _date.today()
+    open_assets = db.scalar(
+        select(func.count(AssetAssignment.id)).where(
+            AssetAssignment.assigned_to_user_id == record_id,
+            AssetAssignment.returned_date.is_(None),
+        )
+    ) or 0
+    active_shifts = db.scalar(
+        select(func.count(ResourceShiftAssignment.id)).where(
+            ResourceShiftAssignment.user_id == record_id,
+            ResourceShiftAssignment.is_active.is_(True),
+            or_(
+                ResourceShiftAssignment.effective_to.is_(None),
+                ResourceShiftAssignment.effective_to >= today,
+            ),
+        )
+    ) or 0
+    open_projects = db.scalar(
+        select(func.count(Project.id)).where(
+            Project.is_deleted.is_(False),
+            Project.execution_status.notin_(
+                [ExecutionStatus.completed, ExecutionStatus.cancelled]
+            ),
+            or_(
+                Project.designer_id == record_id,
+                Project.surfacer_id == record_id,
+                Project.design_leader_id == record_id,
+            ),
+        )
+    ) or 0
+    effects: list[str] = []
+    if target == "virtual" and current != "virtual":
+        effects = [
+            "Removed from HR headcount, shift rosters, timesheet compliance and capacity planning.",
+            "Timesheet and salary requirements are switched off; past timesheets stay.",
+            "New IT assets, licences and shift assignments can no longer be given to this account.",
+            "Role, module access and permissions are unchanged.",
+        ]
+    elif target == "employee" and current == "virtual":
+        effects = [
+            "Counted again in HR headcount, shift rosters, timesheet compliance and capacity planning.",
+            "Timesheet and salary requirements return to the role defaults unless set explicitly.",
+        ]
+    return {
+        "user_id": str(record_id),
+        "current_type": current,
+        "target_type": target,
+        "changes": current != target,
+        "open_asset_assignments": int(open_assets),
+        "active_shift_assignments": int(active_shifts),
+        "open_project_assignments": int(open_projects),
+        "requires_timesheet": bool(db_user.requires_timesheet),
+        "effects": effects,
+    }
 
 
 @router.get("/{record_id}/delete-check", response_model=UserDeleteCheck)
@@ -228,7 +304,18 @@ def update_user(
                 payload.pop("team_id", None)
                 payload["is_active"] = False
         if payload:
+            previous_type = db_obj.user_type
             updated = user_crud.update(db, db_obj=db_obj, obj_in=payload)
+            if updated.user_type != previous_type:
+                log_activity(
+                    db,
+                    user=current_user,
+                    entity_type=EntityType.user,
+                    entity_id=updated.id,
+                    action=ActivityAction.user_type_changed,
+                    old_value=previous_type.value if previous_type else None,
+                    new_value=updated.user_type.value if updated.user_type else None,
+                )
         else:
             db.commit()
             db.refresh(db_obj)

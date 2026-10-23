@@ -3,10 +3,11 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from fastapi.responses import Response
+from sqlalchemy import select
 
-from app.api.auth_deps import get_current_user, require_roles
+from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
-from app.core.permissions import can_view_deleted_projects
+from app.core.permissions import can_view_deleted_projects, can_view_reports
 from app.services.reporting.report_authorization import (
     assert_report_user_allowed,
     log_report_generation,
@@ -84,8 +85,13 @@ from app.schemas.reporting import (
     ReportScheduleEntry,
     ReportScheduleRequest,
 )
+from app.schemas.engineering_performance import EngineeringPerformanceReport
 from app.services.reporting import reporting_engine
 from app.services.reporting.customer_timesheet_pack import build_customer_timesheet_pack
+from app.services.reporting.engineering_performance import (
+    PerformanceFilters,
+    build_engineering_performance,
+)
 from app.services.reporting.designer_team_timesheet import (
     build_designer_team_timesheet,
     is_designer_team_timesheet_report,
@@ -106,21 +112,22 @@ from app.services.reporting.timesheet_report_sections import (
     parse_timesheet_sections,
 )
 
+def _require_report_access(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if not can_view_reports(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to Reports. Ask an administrator for the Reports module.",
+        )
+    return current_user
+
+
 router = APIRouter(
     prefix="/reports",
     tags=["reports"],
-    dependencies=[
-        Depends(get_current_user),
-        Depends(
-            require_roles(
-                "Admin",
-                "Engineering Manager",
-                "Design Leader",
-                "Read Only",
-                "Project Manager",
-            )
-        ),
-    ],
+    dependencies=[Depends(_require_report_access)],
 )
 
 
@@ -209,6 +216,11 @@ def _engineering_report_options(
         "scope": scope,
         "sections": selected_sections,
     }
+
+
+def _engine_kwargs(options: dict[str, object]) -> dict[str, object]:
+    """Engineering reports take the shared filters but not the timesheet-only ``sections``."""
+    return {key: value for key, value in options.items() if key != "sections"}
 
 
 @router.get("/catalog", response_model=ReportCatalog)
@@ -338,7 +350,7 @@ def engineering_report_preview(
             sections=options.get("sections"),  # type: ignore[arg-type]
         )
     try:
-        return reporting_engine.build_report(db, report_id=report_id, **options)
+        return reporting_engine.build_report(db, report_id=report_id, **_engine_kwargs(options))
     except KeyError as exc:
         if "Unknown report" in str(exc) or "not registered" in str(exc):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -420,7 +432,7 @@ def engineering_report_export(
                         week_number=week_number,
                     )
         else:
-            payload = reporting_engine.build_report(db, report_id=report_id, **options)
+            payload = reporting_engine.build_report(db, report_id=report_id, **_engine_kwargs(options))
             content = reporting_engine.export_excel(payload)
             period_type = str(options.get("period_type") or payload.period.period_type)
             week_number = (
@@ -486,6 +498,172 @@ def engineering_report_export(
             else None,
         },
         team_id=scoped_team_id,
+        filename=filename,
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+_PERFORMANCE_PERIODS = {"weekly", "monthly", "quarterly", "yearly", "custom"}
+
+
+def _performance_filters(
+    period_type: str = Query("monthly"),
+    anchor: date | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    plan_basis: str = Query("current"),
+    customer_id: UUID | None = Query(None),
+    end_customer_id: UUID | None = Query(None),
+    team_id: UUID | None = Query(None),
+    design_leader_id: UUID | None = Query(None),
+    designer_id: UUID | None = Query(None),
+    surfacer_id: UUID | None = Query(None),
+    project_type_id: UUID | None = Query(None),
+    template_id: UUID | None = Query(None),
+    include_archived: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> tuple[PerformanceFilters, dict[str, str | None]]:
+    from app.core.team_access import project_visibility_clause
+    from app.models.models import ProjectTemplate, ProjectType
+
+    if period_type not in _PERFORMANCE_PERIODS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"period_type must be one of: {', '.join(sorted(_PERFORMANCE_PERIODS))}",
+        )
+    if plan_basis not in {"current", "original"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="plan_basis must be 'current' or 'original'",
+        )
+    try:
+        scope = resolve_report_scope(db, current_user, customer_id=customer_id, team_id=team_id)
+    except ReportScopeForbidden as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    template_family_id = None
+    if template_id is not None:
+        template = db.get(ProjectTemplate, template_id)
+        if template is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+        template_family_id = template.template_family_id or template.id
+
+    def _label(model, ref):
+        if ref is None:
+            return None
+        row = db.get(model, ref)
+        if row is None:
+            return str(ref)
+        if isinstance(row, User):
+            return f"{row.first_name or ''} {row.last_name or ''}".strip() or row.email
+        return getattr(row, "name", str(ref))
+
+    filters = PerformanceFilters(
+        period_type=period_type,
+        anchor=anchor,
+        start_date=start_date,
+        end_date=end_date,
+        plan_basis=plan_basis,
+        customer_id=customer_id,
+        end_customer_id=end_customer_id,
+        team_ids=scope.team_ids if scope.team_ids is not None else (
+            frozenset({team_id}) if team_id is not None else None
+        ),
+        design_leader_id=design_leader_id,
+        designer_id=designer_id,
+        surfacer_id=surfacer_id,
+        project_type_id=project_type_id,
+        template_family_id=template_family_id,
+        include_archived=include_archived,
+        visibility_clause=project_visibility_clause(db, current_user),
+    )
+    labels = {
+        "customer": _label(Customer, customer_id),
+        "end_customer": _label(Customer, end_customer_id),
+        "team": _label(Team, team_id),
+        "design_leader": _label(User, design_leader_id),
+        "designer": _label(User, designer_id),
+        "surfacer": _label(User, surfacer_id),
+        "project_type": _label(ProjectType, project_type_id),
+        "template": _label(ProjectTemplate, template_id),
+        "plan_basis": "Original estimate" if plan_basis == "original" else "Current approved estimate",
+    }
+    return filters, labels
+
+
+def _build_performance(db: Session, params) -> EngineeringPerformanceReport:
+    filters, labels = params
+    try:
+        return build_engineering_performance(db, filters, filter_labels=labels)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.get("/engineering-data-quality")
+def engineering_data_quality(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Records that make schedules and KPIs unreliable, within the viewer's project scope."""
+    from app.core.team_access import project_visibility_clause
+    from app.services.reporting.engineering_data_quality import build_engineering_data_quality
+
+    return build_engineering_data_quality(
+        db, visibility_clause=project_visibility_clause(db, current_user)
+    )
+
+
+@router.get("/engineering-performance", response_model=EngineeringPerformanceReport)
+def engineering_performance_report(
+    db: Session = Depends(get_db),
+    params=Depends(_performance_filters),
+):
+    return _build_performance(db, params)
+
+
+@router.get("/engineering-performance/export.xlsx")
+def engineering_performance_export(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    params=Depends(_performance_filters),
+):
+    from app.core.access_control import SPECIAL_EXPORT_REPORTS
+    from app.core.permissions import user_holds_special
+    from app.models.foundation import CompanySettings
+    from app.services.reporting.excel.engineering_performance import (
+        generate_engineering_performance_excel,
+    )
+
+    if not user_holds_special(db, current_user, SPECIAL_EXPORT_REPORTS):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires the 'export_reports' permission.",
+        )
+    report = _build_performance(db, params)
+    settings = db.scalar(select(CompanySettings).limit(1))
+    company_name = (settings.company_name if settings and settings.company_name else "ProTrack")
+    content = generate_engineering_performance_excel(report, company_name=company_name)
+    filename = (
+        f"Engineering_Performance_{report.period.period_type}_"
+        f"{report.period.start_date:%Y%m%d}-{report.period.end_date:%Y%m%d}.xlsx"
+    )
+    filters, _labels = params
+    log_report_generation(
+        db,
+        user=current_user,
+        report_type="engineering-performance",
+        filters={
+            "period_type": report.period.period_type,
+            "start_date": report.period.start_date.isoformat(),
+            "end_date": report.period.end_date.isoformat(),
+            "customer_id": str(filters.customer_id) if filters.customer_id else None,
+            "plan_basis": filters.plan_basis,
+        },
+        team_id=next(iter(filters.team_ids)) if filters.team_ids and len(filters.team_ids) == 1 else None,
         filename=filename,
     )
     return Response(

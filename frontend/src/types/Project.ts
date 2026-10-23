@@ -99,6 +99,24 @@ export interface Project extends Timestamped {
   setup_gaps?: string[];
   qa_gate_enabled?: boolean;
   workstreams?: ProjectWorkstreamSummary[];
+  start_date?: string | null;
+  end_customer_id?: string | null;
+  end_customer_name?: string | null;
+  baseline_start_date?: string | null;
+  baseline_completion_date?: string | null;
+  baseline_version?: number;
+  forecast_completion_date?: string | null;
+  forecast_status?: string | null;
+  forecast_note?: string | null;
+  actual_start_date?: string | null;
+  actual_completion_date?: string | null;
+  stage_estimates_configured?: boolean;
+}
+
+export interface StageHoursInput {
+  preliminary: number;
+  intermediate: number;
+  final: number;
 }
 
 export interface ArchivedProjectListItem extends Omit<Project, 'design_leader_name'> {
@@ -128,6 +146,9 @@ export interface ProjectCreate {
   code?: string | null;
   quoted_hours?: number | null;
   due_date?: string | null;
+  start_date?: string | null;
+  end_customer_id?: string | null;
+  stage_hours?: StageHoursInput | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   complexity?: 'low' | 'medium' | 'high' | 'expert';
   project_classification: ProjectClassification;
@@ -158,6 +179,9 @@ export interface ProjectUpdate {
   code?: string | null;
   quoted_hours?: number | null;
   due_date?: string | null;
+  start_date?: string | null;
+  end_customer_id?: string | null;
+  actual_completion_date?: string | null;
   priority?: 'critical' | 'high' | 'medium' | 'low';
   complexity?: 'low' | 'medium' | 'high' | 'expert';
   project_classification?: ProjectClassification;

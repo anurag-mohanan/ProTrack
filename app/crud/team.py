@@ -61,6 +61,7 @@ def build_team_read(db: Session, team: Team) -> TeamRead:
         allow_post_completion_timesheet=bool(
             getattr(team, "allow_post_completion_timesheet", True)
         ),
+        projects_enabled=team.projects_enabled is not False,
         organization_id=team.organization_id,
         created_at=team.created_at,
         updated_at=team.updated_at,

@@ -13,6 +13,7 @@ from app.models.enums import (
     TaskTypeFunctionCategory,
     TeamRelationshipType,
     UserAvailabilityStatus,
+    UserType,
 )
 from app.schemas.common import BlankOptionalFieldsMixin, TimestampSchema
 
@@ -172,6 +173,9 @@ class UserBase(BaseModel):
     kpi_workload_planning: bool = True
     kpi_dashboard_productivity: bool = True
     default_working_model_id: UUID | None = None
+    # Virtual/system accounts keep role access but are excluded from HR,
+    # headcount, shifts, IT allocation, timesheet compliance and capacity.
+    user_type: UserType = UserType.employee
 
 
 class UserCreate(BlankOptionalFieldsMixin, UserBase):
@@ -217,6 +221,7 @@ class UserUpdate(BlankOptionalFieldsMixin, BaseModel):
     kpi_workload_planning: bool | None = None
     kpi_dashboard_productivity: bool | None = None
     default_working_model_id: UUID | None = None
+    user_type: UserType | None = None
     requires_timesheet: bool | None = None
     requires_salary: bool | None = None
     reset_kpi_defaults: bool = False

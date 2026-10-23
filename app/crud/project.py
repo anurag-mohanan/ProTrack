@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, override
 from uuid import UUID
@@ -29,6 +29,8 @@ from app.services.project_template_service import (
     create_milestones_from_template,
     resolve_template,
 )
+from app.services.project_estimate_service import add_initial_stage_estimates
+from app.services.scheduling_service import apply_baseline
 
 DEFAULT_PROJECT_MILESTONES = (
     "Feasibility",
@@ -432,9 +434,50 @@ def _validate_changed_project_references(
                 raise ProTrackValidationError("team_id must reference an active team")
 
 
+def _validate_end_customer(db: Session, end_customer_id: UUID | None) -> None:
+    if end_customer_id is None:
+        return
+    end_customer = db.get(Customer, end_customer_id)
+    if end_customer is None or not end_customer.is_active:
+        raise ProTrackValidationError("end_customer_id must reference an active customer")
+
+
+def _validate_team_takes_projects(db: Session, team_id: UUID | None) -> None:
+    if team_id is None:
+        return
+    team = db.get(Team, team_id)
+    if team is not None and team.projects_enabled is False:
+        raise ProTrackValidationError(
+            f"Team '{team.name}' is not enabled for projects. An administrator can enable it "
+            "under Admin → Teams."
+        )
+
+
+def _completion_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        completed = value.replace(tzinfo=None)
+    elif isinstance(value, date):
+        completed = datetime(value.year, value.month, value.day, 12, 0, 0)
+    else:
+        raise ProTrackValidationError("actual_completion_date must be a date")
+    if completed.date() > datetime.now(timezone.utc).date():
+        raise ProTrackValidationError("Actual completion date cannot be in the future")
+    return completed
+
+
 class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
     @override
-    def create(self, db: Session, *, obj_in: ProjectCreate) -> Project:
+    def create(
+        self, db: Session, *, obj_in: ProjectCreate, created_by_id: UUID | None = None
+    ) -> Project:
+        if obj_in.stage_hours is not None and obj_in.quoted_hours not in (None, Decimal("0")):
+            if Decimal(str(obj_in.quoted_hours)) != obj_in.stage_hours.total:
+                raise ProTrackValidationError(
+                    "Quoted hours must equal the total of the Blockout, Intermediate and "
+                    "Final Design hours"
+                )
+        if obj_in.stage_hours is not None:
+            obj_in = obj_in.model_copy(update={"quoted_hours": obj_in.stage_hours.total})
         prepared = _prepare_project_create(db, obj_in)
         _validate_tool_number_unique(db, prepared.tool_number)
         _validate_code_unique(db, prepared.code)
@@ -447,9 +490,16 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             surfacer_id=prepared.surfacer_id,
         )
 
-        db_obj = Project(**prepared.model_dump())
+        _validate_end_customer(db, prepared.end_customer_id)
+        _validate_team_takes_projects(db, prepared.team_id)
+        stage_hours = prepared.stage_hours
+        db_obj = Project(**prepared.model_dump(exclude={"stage_hours"}))
         db.add(db_obj)
         db.flush()
+        if stage_hours is not None:
+            add_initial_stage_estimates(
+                db, db_obj, stage_hours.as_stage_map(), created_by_id=created_by_id
+            )
 
         if prepared.project_type_id is not None:
             template = resolve_template(
@@ -465,10 +515,12 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 db,
                 project=db_obj,
                 template=template,
+                stage_hours=stage_hours.as_stage_map() if stage_hours else None,
             )
         else:
             db_obj.project_template_id = None
 
+        apply_baseline(db, db_obj, actor_id=created_by_id)
         _safe_commit(db)
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)
@@ -499,6 +551,7 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
         *,
         db_obj: Project,
         obj_in: ProjectUpdate | dict[str, object],
+        updated_by_id: UUID | None = None,
     ) -> Project:
         if isinstance(obj_in, dict):
             update_data: dict[str, object] = dict(obj_in)
@@ -568,14 +621,44 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
             and update_data["project_stage"] != previous_stage
         )
 
+        if "end_customer_id" in update_data:
+            _validate_end_customer(db, update_data["end_customer_id"])  # type: ignore[arg-type]
+        if update_data.get("team_id") is not None and update_data["team_id"] != db_obj.team_id:
+            _validate_team_takes_projects(db, update_data["team_id"])  # type: ignore[arg-type]
+
+        actual_completion = update_data.pop("actual_completion_date", None)
+        effective_status = update_data.get("execution_status", db_obj.execution_status)
+        if actual_completion is not None:
+            if effective_status != ExecutionStatus.completed:
+                raise ProTrackValidationError(
+                    "An actual completion date can only be set on a completed project"
+                )
+            completed_at = _completion_datetime(actual_completion)
+            effective_start = update_data.get("start_date", db_obj.start_date)
+            if isinstance(effective_start, date) and completed_at.date() < effective_start:
+                raise ProTrackValidationError(
+                    "Actual completion date cannot be before the project start date"
+                )
+            update_data["completed_at"] = completed_at
+
         if "execution_status" in update_data:
             new_status = update_data["execution_status"]
-            if new_status == ExecutionStatus.completed and db_obj.completed_at is None:
+            if (
+                new_status == ExecutionStatus.completed
+                and db_obj.completed_at is None
+                and "completed_at" not in update_data
+            ):
                 update_data["completed_at"] = datetime.now(timezone.utc).replace(
                     tzinfo=None
                 )
             elif new_status != ExecutionStatus.completed:
                 update_data["completed_at"] = None
+
+        first_start_date = (
+            update_data.get("start_date") is not None
+            and db_obj.start_date is None
+            and (db_obj.baseline_version or 0) == 0
+        )
 
         previous_designer_id = db_obj.designer_id
         previous_leader_id = db_obj.design_leader_id
@@ -596,6 +679,9 @@ class CRUDProject(CRUDBase[Project, ProjectCreate, ProjectUpdate]):
                 actor=None,
                 reason="Manual project stage override",
             )
+        if first_start_date:
+            db.flush()
+            apply_baseline(db, db_obj, set_due_dates=False, actor_id=updated_by_id)
         _safe_commit(db)
         db.refresh(db_obj)
         recalculate_project(db, db_obj.id)

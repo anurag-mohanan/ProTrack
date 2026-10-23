@@ -102,9 +102,10 @@ def test_project_list_uses_batch_progress_queries(metrics_session):
 
     assert len(rows) == 25
     # Query count must stay a small constant (batched), never scale with the
-    # number of projects. Base list + progress/milestone batches plus the
-    # batched display-name lookups (customers, users, teams, types).
-    assert len(queries) <= 8
+    # number of projects: base list, progress, hours, current milestone,
+    # customers, streams, users, workstreams, stage-estimate flags and the
+    # template-change lock (logged milestone hours) — one batch each.
+    assert len(queries) <= 10
     assert elapsed_ms < 500
     # Display names are resolved via the batched lookups.
     assert all(row.customer_name == "Metrics Customer" for row in rows)

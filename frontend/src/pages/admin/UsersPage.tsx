@@ -35,7 +35,7 @@ import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useToast } from '../../context/ToastContext';
 import { getErrorMessage } from '../../api/client';
-import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser } from '../../api/resources';
+import { resetUserPassword, rolesApi, usersApi, forceUserPasswordChange, archiveUser, softDeleteUser, setUserTemporaryPassword, setUserMustChangePassword, unlockUser, fetchUserTypeImpact } from '../../api/resources';
 import { fetchDepartments } from '../../api/settings';
 import { fetchOperationalRoles, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { PaginatedDataGrid } from '../../components/common/PaginatedDataGrid';
@@ -47,7 +47,7 @@ import { UserTeamAssignments, type UserTeamAssignmentFormValue } from '../../com
 import { UserAccessControlSection, getSpecialPermissionSodConflicts } from '../../components/admin/UserAccessControlSection';
 import type { ModuleKey, SpecialPermissionKey } from '../../config/accessControl';
 import { ROLES, defaultModulesForRole, defaultSpecialPermissionsForRole } from '../../utils/permissions';
-import type { Role, User, WorkingModel } from '../../types';
+import type { Role, User, UserType, UserTypeImpact, WorkingModel } from '../../types';
 import type { Department } from '../../types/Settings';
 import type { Team } from '../../types/Team';
 import { ContentCard } from '../../components/ui/cards';
@@ -109,6 +109,7 @@ interface UserFormState {
   default_working_model_id: string;
   requires_timesheet: boolean;
   requires_salary: boolean;
+  user_type: UserType;
 }
 
 const emptyForm: UserFormState = {
@@ -150,6 +151,7 @@ const emptyForm: UserFormState = {
   default_working_model_id: '',
   requires_timesheet: true,
   requires_salary: true,
+  user_type: 'employee',
 };
 
 export default function UsersPage() {
@@ -191,6 +193,10 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [toggleTarget, setToggleTarget] = useState<User | null>(null);
   const [leavingConfirmOpen, setLeavingConfirmOpen] = useState(false);
+  const [typeImpact, setTypeImpact] = useState<UserTypeImpact | null>(null);
+  const [typeImpactLoading, setTypeImpactLoading] = useState(false);
+  const [appliedUserTypeFilter, setAppliedUserTypeFilter] = useState<string>('all');
+  const [draftUserTypeFilter, setDraftUserTypeFilter] = useState<string>('all');
   const [historicalOpen, setHistoricalOpen] = useState(false);
   const [historicalJoining, setHistoricalJoining] = useState('');
   const [historicalFirstJob, setHistoricalFirstJob] = useState('');
@@ -244,11 +250,13 @@ export default function UsersPage() {
     if (appliedActiveFilter === 'inactive') params.is_active = false;
     if (appliedTeamFilter !== 'all') params.team_id = appliedTeamFilter;
     if (appliedEmploymentFilter !== 'all') params.employment_type = appliedEmploymentFilter;
+    if (appliedUserTypeFilter !== 'all') params.user_type = appliedUserTypeFilter;
     if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
     return params;
   }, [
     appliedActiveFilter,
     appliedEmploymentFilter,
+    appliedUserTypeFilter,
     appliedRoleFilter,
     appliedTeamFilter,
     debouncedSearch,
@@ -417,6 +425,7 @@ export default function UsersPage() {
         default_working_model_id: latest.default_working_model_id ?? '',
         requires_timesheet: latest.requires_timesheet ?? false,
         requires_salary: latest.requires_salary ?? true,
+        user_type: latest.user_type ?? 'employee',
       });
     } catch (error) {
       showError(getErrorMessage(error));
@@ -507,6 +516,19 @@ export default function UsersPage() {
       return;
     }
 
+    const previousType: UserType = editingUser?.user_type ?? 'employee';
+    if (editingUser && form.user_type !== previousType) {
+      setTypeImpactLoading(true);
+      fetchUserTypeImpact(editingUser.id, form.user_type)
+        .then((impact) => setTypeImpact(impact))
+        .catch((error) => showError(getErrorMessage(error)))
+        .finally(() => setTypeImpactLoading(false));
+      return;
+    }
+    continueSave();
+  };
+
+  const continueSave = () => {
     if (leavingDateRequiresConfirm()) {
       setLeavingConfirmOpen(true);
       return;
@@ -547,6 +569,7 @@ export default function UsersPage() {
           default_working_model_id: optionalUuid(form.default_working_model_id),
           requires_timesheet: form.requires_timesheet,
           requires_salary: form.requires_salary,
+          user_type: form.user_type,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
           ...(confirmLeftOrganisation ? { confirm_left_organisation: true } : {}),
@@ -580,6 +603,7 @@ export default function UsersPage() {
           default_working_model_id: optionalUuid(form.default_working_model_id),
           requires_timesheet: form.requires_timesheet,
           requires_salary: form.requires_salary,
+          user_type: form.user_type,
           module_access: form.module_access,
           special_permissions: form.special_permissions,
           ...(confirmLeftOrganisation ? { confirm_left_organisation: true } : {}),
@@ -811,6 +835,19 @@ export default function UsersPage() {
       valueGetter: (_value, row) => formatEmploymentType(row.employment_type) || '—',
     },
     {
+      field: 'user_type',
+      headerName: 'Account',
+      width: 120,
+      renderCell: (params) =>
+        params.row.user_type === 'virtual' ? (
+          <Tooltip title="Virtual/system account: keeps its permissions but is excluded from HR headcount, shifts, IT allocation and timesheet compliance.">
+            <Chip label="Virtual" size="small" color="warning" variant="outlined" />
+          </Tooltip>
+        ) : (
+          <Chip label="Employee" size="small" variant="outlined" />
+        ),
+    },
+    {
       field: 'password_status',
       headerName: 'Password',
       width: 160,
@@ -874,6 +911,7 @@ export default function UsersPage() {
     (appliedRoleFilter !== 'all' ? 1 : 0) +
     (appliedTeamFilter !== 'all' ? 1 : 0) +
     (appliedEmploymentFilter !== 'all' ? 1 : 0) +
+    (appliedUserTypeFilter !== 'all' ? 1 : 0) +
     (appliedActiveFilter !== 'all' ? 1 : 0);
 
   const filterChips = [
@@ -907,6 +945,16 @@ export default function UsersPage() {
           },
         }
       : null,
+    appliedUserTypeFilter !== 'all'
+      ? {
+          key: 'user_type',
+          label: `Account: ${appliedUserTypeFilter === 'virtual' ? 'Virtual' : 'Employee'}`,
+          onRemove: () => {
+            setAppliedUserTypeFilter('all');
+            setDraftUserTypeFilter('all');
+          },
+        }
+      : null,
     appliedActiveFilter !== 'all'
       ? {
           key: 'active',
@@ -923,6 +971,7 @@ export default function UsersPage() {
     setAppliedRoleFilter(draftRoleFilter);
     setAppliedTeamFilter(draftTeamFilter);
     setAppliedEmploymentFilter(draftEmploymentFilter);
+    setAppliedUserTypeFilter(draftUserTypeFilter);
     setAppliedActiveFilter(draftActiveFilter);
   };
 
@@ -930,6 +979,7 @@ export default function UsersPage() {
     setDraftRoleFilter('all');
     setDraftTeamFilter('all');
     setDraftEmploymentFilter('all');
+    setDraftUserTypeFilter('all');
     setDraftActiveFilter('all');
   };
 
@@ -940,6 +990,8 @@ export default function UsersPage() {
     setDraftTeamFilter('all');
     setAppliedEmploymentFilter('all');
     setDraftEmploymentFilter('all');
+    setAppliedUserTypeFilter('all');
+    setDraftUserTypeFilter('all');
     setAppliedActiveFilter('all');
     setDraftActiveFilter('all');
   };
@@ -1007,7 +1059,7 @@ export default function UsersPage() {
         formId="user-form"
         width={560}
         submitLabel={editingUser ? 'Save Changes' : 'Create User'}
-        loading={saving}
+        loading={saving || typeImpactLoading}
       >
         <Box
           component="form"
@@ -1154,6 +1206,29 @@ export default function UsersPage() {
                 }
               />
             </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSelect
+                label="Account Type"
+                value={form.user_type}
+                options={[
+                  { value: 'employee', label: 'Employee' },
+                  { value: 'virtual', label: 'Virtual (shared, system or test account)' },
+                ]}
+                helper={
+                  form.user_type === 'virtual'
+                    ? 'Keeps role and permissions. Excluded from HR headcount, shifts, IT allocation, timesheet compliance and capacity.'
+                    : 'A real person counted in HR, shifts, IT and timesheets.'
+                }
+                onChange={(event) => {
+                  const next = String(event.target.value) as UserType;
+                  setForm((current) => ({
+                    ...current,
+                    user_type: next,
+                    ...(next === 'virtual' ? { requires_timesheet: false, requires_salary: false } : {}),
+                  }));
+                }}
+              />
+            </Grid>
             {!editingUser ? (
               <>
                 <Grid size={{ xs: 12 }}>
@@ -1248,6 +1323,7 @@ export default function UsersPage() {
               control={
                 <Switch
                   checked={form.requires_timesheet}
+                  disabled={form.user_type === 'virtual'}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -1267,6 +1343,7 @@ export default function UsersPage() {
               control={
                 <Switch
                   checked={form.requires_salary}
+                  disabled={form.user_type === 'virtual'}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -1755,6 +1832,48 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={Boolean(typeImpact)} onClose={() => setTypeImpact(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {typeImpact?.target_type === 'virtual' ? 'Change to a virtual/system account?' : 'Change to an employee account?'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5}>
+            {(typeImpact?.effects ?? []).map((line) => (
+              <Typography key={line} variant="body2">
+                • {line}
+              </Typography>
+            ))}
+            {typeImpact && typeImpact.target_type === 'virtual'
+            && (typeImpact.open_asset_assignments
+              || typeImpact.active_shift_assignments
+              || typeImpact.open_project_assignments) ? (
+                <Typography variant="body2" color="warning.main">
+                  Existing records stay in place and must be reviewed separately:{' '}
+                  {typeImpact.open_asset_assignments} IT asset assignment(s),{' '}
+                  {typeImpact.active_shift_assignments} active shift assignment(s),{' '}
+                  {typeImpact.open_project_assignments} open project assignment(s).
+                </Typography>
+              ) : null}
+            <Typography variant="caption" color="text.secondary">
+              No history is deleted. The change is recorded in the activity log.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTypeImpact(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              setTypeImpact(null);
+              continueSave();
+            }}
+          >
+            Change account type
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <ConfirmDialog
         open={leavingConfirmOpen}
         title="Confirm employee has left"
@@ -1836,6 +1955,17 @@ export default function UsersPage() {
               value={draftEmploymentFilter}
               options={employmentFilterOptions}
               onChange={(event) => setDraftEmploymentFilter(String(event.target.value))}
+            />
+            <FormSelect
+              label="Account type"
+              size="small"
+              value={draftUserTypeFilter}
+              options={[
+                { value: 'all', label: 'All account types' },
+                { value: 'employee', label: 'Employees' },
+                { value: 'virtual', label: 'Virtual / system accounts' },
+              ]}
+              onChange={(event) => setDraftUserTypeFilter(String(event.target.value))}
             />
             <FormSelect
               label="Active / inactive"

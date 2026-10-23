@@ -26,6 +26,7 @@ def test_create_project_sets_timestamps(client, test_session_factory):
         json={
             "tool_number": tool_number,
             "part_description": "Timestamp coverage",
+            "project_classification": "full_design",
             "customer_id": str(IDS["customer"]),
         },
         headers=headers,

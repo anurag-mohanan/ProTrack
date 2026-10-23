@@ -8,6 +8,8 @@ export interface Team extends Timestamped {
   colour: string;
   is_active: boolean;
   allow_post_completion_timesheet?: boolean;
+  /** When false the team cannot own projects (e.g. HR, Admin) and is hidden from project pickers. */
+  projects_enabled?: boolean;
   organization_id: string | null;
   business_unit?: string | null;
   member_count: number;
@@ -106,6 +108,7 @@ export interface TeamCreate {
   colour?: string;
   is_active?: boolean;
   allow_post_completion_timesheet?: boolean;
+  projects_enabled?: boolean;
   organization_id?: string | null;
   business_unit?: string | null;
 }
@@ -117,6 +120,7 @@ export interface TeamUpdate {
   colour?: string;
   is_active?: boolean;
   allow_post_completion_timesheet?: boolean;
+  projects_enabled?: boolean;
   organization_id?: string | null;
   business_unit?: string | null;
 }

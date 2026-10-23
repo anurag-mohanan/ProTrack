@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,8 +24,26 @@ import {
   setAccessToken,
   setAdminToken,
 } from '../services/authStorage';
-import { resetQueryCache } from '../lib/queryClient';
+import { queryClient, resetQueryCache } from '../lib/queryClient';
 import { userDisplayName } from '../utils/format';
+
+const PERMISSION_SYNC_INTERVAL_MS = 60_000;
+
+function accessSignature(user: CurrentUser): string {
+  return JSON.stringify([
+    user.role_id,
+    user.role_name,
+    user.is_active,
+    user.must_change_password,
+    [...(user.resolved_modules ?? [])].sort(),
+    [...(user.resolved_special_permissions ?? [])].sort(),
+    [...(user.team_ids ?? [])].sort(),
+    user.module_actions ?? null,
+    user.data_scope ?? null,
+    user.requires_timesheet ?? null,
+    user.can_enter_own_timesheet ?? null,
+  ]);
+}
 
 interface AuthContextValue {
   user: CurrentUser | null;
@@ -70,6 +89,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void loadUser();
   }, [loadUser]);
+
+  // Pick up role, module, permission and team changes made by an admin without a re-login.
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (!userId) return undefined;
+    let cancelled = false;
+    const sync = async () => {
+      if (!getAccessToken() || document.visibilityState !== 'visible') return;
+      let latest: CurrentUser;
+      try {
+        latest = await fetchCurrentUser();
+      } catch (error) {
+        const status = (error as { status?: number; response?: { status?: number } })?.status
+          ?? (error as { response?: { status?: number } })?.response?.status;
+        if (!cancelled && status === 401) {
+          clearAccessToken();
+          clearAdminToken();
+          resetQueryCache();
+          setUser(null);
+        }
+        // Any other failure (e.g. offline) keeps the last known permissions until the next sync.
+        return;
+      }
+      if (cancelled) return;
+      const current = userRef.current;
+      if (current && accessSignature(current) === accessSignature(latest)) return;
+      setUser(latest);
+      void queryClient.invalidateQueries();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void sync();
+    };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(() => void sync(), PERMISSION_SYNC_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [userId]);
 
   const login = useCallback(async (credentials: LoginRequest) => {
     const tokenResponse = await loginApi(credentials);

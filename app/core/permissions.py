@@ -100,7 +100,16 @@ def is_timesheet_compliance_viewer(db: Session, user: User) -> bool:
 
 
 def can_view_reports(db: Session, user: User) -> bool:
-    return has_role(db, user, *REPORT_VIEWER_ROLES)
+    """Same rule as the frontend Reports route: viewer role, Reports module or view_reports.
+
+    Data inside each report is still clipped by ``resolve_report_scope``.
+    """
+    if has_role(db, user, *REPORT_VIEWER_ROLES, LEGACY_PROJECT_MANAGER):
+        return True
+    role_name = normalize_role_name(get_role_name(db, user))
+    return user_has_module(user, role_name, MODULE_REPORTS) or user_has_special(
+        user, role_name, SPECIAL_VIEW_REPORTS
+    )
 
 
 def can_view_resource_planning(db: Session, user: User) -> bool:

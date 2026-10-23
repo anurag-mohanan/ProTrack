@@ -29,6 +29,32 @@ class ProjectSmallTaskTypeRead(BaseModel):
     is_active: bool = True
 
 
+class StageHoursInput(BaseModel):
+    """Planned effort for the three stages entered at project creation."""
+
+    preliminary: Decimal = Field(ge=0, description="Blockout hours")
+    intermediate: Decimal = Field(ge=0, description="Intermediate Design hours")
+    final: Decimal = Field(ge=0, description="Final Design hours")
+
+    def as_stage_map(self) -> dict[ProjectStage, Decimal]:
+        return {
+            ProjectStage.preliminary: self.preliminary,
+            ProjectStage.intermediate: self.intermediate,
+            ProjectStage.final: self.final,
+        }
+
+    @property
+    def total(self) -> Decimal:
+        return self.preliminary + self.intermediate + self.final
+
+
+class ProjectStageEstimateRead(BaseModel):
+    stage: ProjectStage
+    stage_label: str
+    original_hours: Decimal
+    current_hours: Decimal
+
+
 class ProjectWorkstreamSummary(BaseModel):
     workstream_id: UUID
     workstream_name: str | None = None
@@ -85,6 +111,9 @@ class ProjectCreate(BlankOptionalFieldsMixin, BaseModel):
     code: str | None = Field(default=None, max_length=50)
     quoted_hours: Decimal | None = Field(default=None, ge=0)
     due_date: date | None = None
+    start_date: date | None = None
+    end_customer_id: UUID | None = None
+    stage_hours: StageHoursInput | None = None
     project_stage: ProjectStage = ProjectStage.preliminary
     execution_status: ExecutionStatus = ExecutionStatus.planning
     priority: ProjectPriority = ProjectPriority.medium
@@ -131,6 +160,11 @@ class ProjectUpdate(BlankOptionalFieldsMixin, BaseModel):
     code: str | None = Field(default=None, max_length=50)
     quoted_hours: Decimal | None = Field(default=None, ge=0)
     due_date: date | None = None
+    start_date: date | None = None
+    end_customer_id: UUID | None = None
+    # Date the work was actually completed; defaults to today when a project is
+    # marked completed without one. Only valid for completed projects.
+    actual_completion_date: date | None = None
     project_stage: ProjectStage | None = None
     execution_status: ExecutionStatus | None = None
     priority: ProjectPriority | None = None
@@ -205,6 +239,18 @@ class ProjectRead(ProjectBase, TimestampSchema):
     setup_gaps: list[str] = Field(default_factory=list)
     qa_gate_enabled: bool = False
     workstreams: list[ProjectWorkstreamSummary] = Field(default_factory=list)
+    start_date: date | None = None
+    end_customer_id: UUID | None = None
+    end_customer_name: str | None = None
+    baseline_start_date: date | None = None
+    baseline_completion_date: date | None = None
+    baseline_version: int = 0
+    forecast_completion_date: date | None = None
+    forecast_status: str | None = None
+    forecast_note: str | None = None
+    actual_start_date: date | None = None
+    actual_completion_date: date | None = None
+    stage_estimates_configured: bool = False
 
 
 class ProjectDeleteCheck(BaseModel):
@@ -279,6 +325,17 @@ class MilestoneRead(MilestoneBase, TimestampSchema):
     qa_acknowledged: bool = False
     qa_gate_required: bool = False
     stage_sync: dict | None = None
+    original_planned_hours: Decimal | None = None
+    estimate_basis: str | None = None
+    baseline_start_date: date | None = None
+    baseline_finish_date: date | None = None
+    forecast_start_date: date | None = None
+    forecast_finish_date: date | None = None
+    actual_start_date: date | None = None
+    override_start_date: date | None = None
+    override_finish_date: date | None = None
+    override_reason: str | None = None
+    template_milestone_id: UUID | None = None
 
 
 class MilestoneReorderItem(BaseModel):

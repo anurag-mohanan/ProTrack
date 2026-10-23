@@ -6,6 +6,7 @@ import {
   Grid,
   IconButton,
   Switch,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -51,6 +52,7 @@ interface TeamFormState {
   colour: string;
   is_active: boolean;
   allow_post_completion_timesheet: boolean;
+  projects_enabled: boolean;
   business_unit: string;
 }
 
@@ -61,6 +63,7 @@ const emptyForm: TeamFormState = {
   colour: '#1976d2',
   is_active: true,
   allow_post_completion_timesheet: true,
+  projects_enabled: true,
   business_unit: '',
 };
 
@@ -137,6 +140,7 @@ export default function TeamsPage() {
       colour: team.colour,
       is_active: team.is_active,
       allow_post_completion_timesheet: team.allow_post_completion_timesheet !== false,
+      projects_enabled: team.projects_enabled !== false,
       business_unit: team.business_unit ?? '',
     });
     setFormOpen(true);
@@ -157,6 +161,7 @@ export default function TeamsPage() {
         colour: form.colour,
         is_active: form.is_active,
         allow_post_completion_timesheet: form.allow_post_completion_timesheet,
+        projects_enabled: form.projects_enabled,
         business_unit: optionalString(form.business_unit),
       };
       if (editingTeam) {
@@ -339,6 +344,19 @@ export default function TeamsPage() {
       ),
     },
     {
+      field: 'projects_enabled',
+      headerName: 'Projects',
+      width: 110,
+      renderCell: (params) => (
+        <Chip
+          label={params.row.projects_enabled === false ? 'Off' : 'Enabled'}
+          size="small"
+          variant="outlined"
+          color={params.row.projects_enabled === false ? 'default' : 'primary'}
+        />
+      ),
+    },
+    {
       field: 'actions',
       headerName: '',
       width: isAdmin ? DATA_GRID_ACTIONS_COLUMN_WIDTH + 40 : DATA_GRID_ACTIONS_COLUMN_WIDTH,
@@ -501,6 +519,26 @@ export default function TeamsPage() {
                 }
                 label="Allow hours after project completion"
               />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.projects_enabled}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        projects_enabled: event.target.checked,
+                      })
+                    }
+                  />
+                }
+                label="Team can own projects"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 6 }}>
+                Turn off for teams such as HR or Admin. They are hidden from project team pickers and
+                the Projects page; existing projects stay assigned.
+              </Typography>
             </Grid>
           </FormSection>
         </Box>

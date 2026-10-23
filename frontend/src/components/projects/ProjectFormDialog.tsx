@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchContacts, fetchCustomers, fetchProjectSmallTaskTypes, fetchStreams, fetchTeams, fetchUsers, fetchWorkingModels } from '../../api/lookups';
 import { fetchMatchingProjectTemplates, fetchProjectTemplate, fetchProjectTypes } from '../../api/projectTemplates';
 import type { ExecutionStatus, Project, ProjectClassification, ProjectCreate, ProjectHealth, ProjectStage, ProjectUpdate, Workstream } from '../../types';
+import type { StageHoursInput } from '../../types/Project';
 import { workstreamsApi } from '../../api/resources';
 import {
   createProject,
@@ -69,6 +70,12 @@ interface ProjectFormValues {
   code: string;
   quoted_hours: number | '';
   due_date: string;
+  start_date: string;
+  end_customer_id: string;
+  actual_completion_date: string;
+  stage_preliminary: string;
+  stage_intermediate: string;
+  stage_final: string;
   notes: string;
   work_order_number: string;
   press_tonnage: string;
@@ -105,6 +112,12 @@ const emptyForm: ProjectFormValues = {
   code: '',
   quoted_hours: '',
   due_date: '',
+  start_date: '',
+  end_customer_id: '',
+  actual_completion_date: '',
+  stage_preliminary: '',
+  stage_intermediate: '',
+  stage_final: '',
   notes: '',
   work_order_number: '',
   press_tonnage: '',
@@ -141,6 +154,12 @@ function projectToForm(project: Project): ProjectFormValues {
     code: project.code ?? '',
     quoted_hours: project.quoted_hours,
     due_date: project.due_date ?? '',
+    start_date: project.start_date ?? '',
+    end_customer_id: id(project.end_customer_id),
+    actual_completion_date: project.actual_completion_date ?? '',
+    stage_preliminary: '',
+    stage_intermediate: '',
+    stage_final: '',
     notes: project.notes ?? '',
     work_order_number: project.work_order_number ?? '',
     press_tonnage: project.press_tonnage ?? '',
@@ -175,6 +194,10 @@ function formValuesToProjectUpdate(form: ProjectFormValues): ProjectUpdate {
     project_type_id: optionalUuid(form.project_type_id),
     quoted_hours: form.quoted_hours === '' ? null : Number(form.quoted_hours),
     due_date: optionalString(form.due_date),
+    start_date: optionalString(form.start_date),
+    end_customer_id: optionalUuid(form.end_customer_id),
+    actual_completion_date:
+      form.execution_status === 'completed' ? optionalString(form.actual_completion_date) : null,
     notes: optionalString(form.notes),
     work_order_number: optionalString(form.work_order_number),
     press_tonnage: optionalString(form.press_tonnage),
@@ -228,6 +251,8 @@ interface ProjectFormDialogProps {
   project?: Project | null;
   onCreated?: (projectId: string) => void;
   onUpdated?: (projectId: string) => void;
+  /** Preselects the owning team when creating from a team section. */
+  initialTeamId?: string | null;
 }
 
 export function ProjectFormDialog({
@@ -236,6 +261,7 @@ export function ProjectFormDialog({
   project,
   onCreated,
   onUpdated,
+  initialTeamId,
 }: ProjectFormDialogProps) {
   const isEdit = Boolean(project);
   const queryClient = useQueryClient();
@@ -331,11 +357,11 @@ export function ProjectFormDialog({
     // command-center refetch while the drawer is open wiping Customer/Team selects.
     const hydrateKey = project?.id ?? 'create';
     if (hydratedForRef.current === hydrateKey) return;
-    const initial = project ? projectToForm(project) : emptyForm;
+    const initial = project ? projectToForm(project) : { ...emptyForm, team_id: initialTeamId ?? '' };
     setForm(initial);
     baselineRef.current = serializeForm(initial);
     hydratedForRef.current = hydrateKey;
-  }, [open, project]);
+  }, [open, project, initialTeamId]);
 
   // If the open project payload arrives asynchronously (id already hydrated as
   // empty), re-hydrate when IDs become available without clearing edits mid-type.
@@ -368,6 +394,25 @@ export function ProjectFormDialog({
     quotedHoursNumber === null || quotedHoursNumber <= 24
       ? 'Quoted effort for planning and delivery tracking'
       : 'Hours cannot exceed 24 per day equivalent entry';
+
+  const stageHoursEntered =
+    form.stage_preliminary !== '' || form.stage_intermediate !== '' || form.stage_final !== '';
+  const stageHours: StageHoursInput | null = stageHoursEntered
+    ? {
+        preliminary: Number(form.stage_preliminary || 0),
+        intermediate: Number(form.stage_intermediate || 0),
+        final: Number(form.stage_final || 0),
+      }
+    : null;
+  const stageHoursTotal = stageHours
+    ? stageHours.preliminary + stageHours.intermediate + stageHours.final
+    : null;
+  const stageHoursInvalid = Boolean(
+    stageHours &&
+      [stageHours.preliminary, stageHours.intermediate, stageHours.final].some(
+        (value) => !Number.isFinite(value) || value < 0,
+      ),
+  );
 
   const handleDiscard = () => {
     setForm(JSON.parse(baselineRef.current) as ProjectFormValues);
@@ -441,8 +486,11 @@ export function ProjectFormDialog({
           project_template_id: optionalUuid(form.project_template_id),
           working_model_id: optionalUuid(form.working_model_id),
           code: optionalString(form.code),
-          quoted_hours: optionalNumber(form.quoted_hours),
+          quoted_hours: stageHours ? null : optionalNumber(form.quoted_hours),
           due_date: optionalString(form.due_date),
+          start_date: optionalString(form.start_date),
+          end_customer_id: optionalUuid(form.end_customer_id),
+          stage_hours: stageHours,
           priority: form.priority,
           complexity: form.complexity,
           project_classification: form.project_classification as ProjectClassification,
@@ -609,6 +657,31 @@ export function ProjectFormDialog({
       return;
     }
 
+    if (!isEdit && stageHoursInvalid) {
+      showError('Stage hours must be zero or more.');
+      return;
+    }
+
+    const datesChanged =
+      !isEdit ||
+      form.start_date !== (project?.start_date ?? '') ||
+      form.due_date !== (project?.due_date ?? '');
+    if (datesChanged && form.start_date && form.due_date && form.due_date < form.start_date) {
+      showError('Due date cannot be before the project start date.');
+      return;
+    }
+
+    if (
+      isEdit &&
+      form.execution_status === 'completed' &&
+      form.actual_completion_date &&
+      form.start_date &&
+      form.actual_completion_date < form.start_date
+    ) {
+      showError('Actual completion date cannot be before the project start date.');
+      return;
+    }
+
     if (
       !isEdit &&
       form.project_classification === 'small_task' &&
@@ -715,10 +788,12 @@ export function ProjectFormDialog({
   const teamOptions = useMemo(
     () =>
       withCurrentOption(
-        (teamsQuery.data ?? []).map((team) => ({
-          value: String(team.id),
-          label: team.name,
-        })),
+        (teamsQuery.data ?? [])
+          .filter((team) => team.projects_enabled !== false)
+          .map((team) => ({
+            value: String(team.id),
+            label: team.name,
+          })),
         form.team_id,
         project?.team_name,
       ),
@@ -853,6 +928,25 @@ export function ProjectFormDialog({
               options={contactOptions}
               onChange={(event) =>
                 setForm({ ...form, customer_contact_id: String(event.target.value) })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormSelect
+              label="End Customer (optional)"
+              value={form.end_customer_id}
+              selectedLabel={project?.end_customer_name}
+              helper="The final customer when the work is done for a tooling customer."
+              options={[
+                { value: '', label: 'None' },
+                ...withCurrentOption(
+                  customerOptions.filter((option) => option.value !== form.customer_id),
+                  form.end_customer_id,
+                  project?.end_customer_name,
+                ),
+              ]}
+              onChange={(event) =>
+                setForm({ ...form, end_customer_id: String(event.target.value) })
               }
             />
           </Grid>
@@ -1190,14 +1284,30 @@ export function ProjectFormDialog({
           sectionId="schedule"
           storageKey={PROJECT_SECTION_STORAGE_KEY}
           title="Schedule"
-          subtitle="Due date and quoted effort"
+          subtitle="Start date, stage hours and due date"
           icon={ScheduleOutlinedIcon}
         >
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
+              label="Project Start Date"
+              type="date"
+              helper={
+                isEdit && (project?.baseline_version ?? 0) > 0
+                  ? 'The baseline is already set. Changing the start date does not move the baseline; use a baseline revision on the project.'
+                  : 'Used to calculate the baseline and provisional forecast.'
+              }
+              slotProps={{ inputLabel: { shrink: true } }}
+              value={form.start_date}
+              onChange={(event) =>
+                setForm({ ...form, start_date: event.target.value })
+              }
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormField
               label="Due Date"
               type="date"
-              helper="Suggested by project template and can be adjusted."
+              helper="Customer commitment date, if one was agreed."
               slotProps={{ inputLabel: { shrink: true } }}
               value={form.due_date}
               onChange={(event) =>
@@ -1205,15 +1315,61 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
+          {!isEdit ? (
+            <>
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Planned hours by stage (optional). When entered, quoted hours are set to the
+                  total and the hours are spread over the template milestones of each stage.
+                </Typography>
+              </Grid>
+              {(
+                [
+                  ['stage_preliminary', 'Blockout hours'],
+                  ['stage_intermediate', 'Intermediate Design hours'],
+                  ['stage_final', 'Final Design hours'],
+                ] as const
+              ).map(([field, label]) => (
+                <Grid key={field} size={{ xs: 12, sm: 3 }}>
+                  <FormField
+                    label={label}
+                    type="number"
+                    slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+                    value={form[field]}
+                    onChange={(event) => setForm({ ...form, [field]: event.target.value })}
+                  />
+                </Grid>
+              ))}
+              <Grid size={{ xs: 12, sm: 3 }}>
+                <FormField
+                  label="Total planned hours"
+                  value={stageHoursTotal === null ? '' : String(stageHoursTotal)}
+                  disabled
+                  helper={stageHoursTotal === null ? 'Enter stage hours to total them.' : 'Sum of the three stages.'}
+                />
+              </Grid>
+            </>
+          ) : (
+            <Grid size={{ xs: 12 }}>
+              <Typography variant="caption" color="text.secondary">
+                Stage hours and estimate revisions are managed in the project&apos;s Stage Plan.
+              </Typography>
+            </Grid>
+          )}
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormField
               label="Quoted Hours"
               type="number"
               tooltip="Estimated engineering effort quoted to the customer."
               validationState={quotedHoursValidationState}
-              validationMessage={quotedHoursValidationMessage}
+              validationMessage={
+                !isEdit && stageHoursTotal !== null
+                  ? 'Set from the stage hours total.'
+                  : quotedHoursValidationMessage
+              }
+              disabled={!isEdit && stageHoursTotal !== null}
               slotProps={{ htmlInput: { min: 0, step: 0.25 } }}
-              value={form.quoted_hours}
+              value={!isEdit && stageHoursTotal !== null ? stageHoursTotal : form.quoted_hours}
               onChange={(event) =>
                 setForm({
                   ...form,
@@ -1223,6 +1379,20 @@ export function ProjectFormDialog({
               }
             />
           </Grid>
+          {isEdit && form.execution_status === 'completed' ? (
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormField
+                label="Actual Completion Date"
+                type="date"
+                helper="Leave blank to use today when marking the project completed."
+                slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: new Date().toISOString().slice(0, 10) } }}
+                value={form.actual_completion_date}
+                onChange={(event) =>
+                  setForm({ ...form, actual_completion_date: event.target.value })
+                }
+              />
+            </Grid>
+          ) : null}
         </CollapsibleFormSection>
 
         {isEdit ? (

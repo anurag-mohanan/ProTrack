@@ -13,6 +13,7 @@ export interface CompanySettings {
   financial_year_start_month: number;
   default_working_hours_per_day: number;
   default_working_days: string;
+  scheduling_effort_hours_per_day?: number | string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -49,6 +50,7 @@ export interface PublicSettings {
     company_short_name?: string | null;
     logo_url?: string | null;
     website?: string | null;
+    financial_year_start_month?: number;
   };
   branding: BrandingSettings;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, Chip, Collapse, IconButton, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, Collapse, IconButton, Stack, Typography } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { Customer, Stream, Team, User } from '../../../types';
 import { designTokens } from '../../../theme/designTokens';
@@ -23,6 +24,8 @@ interface ProjectTeamCommandCenterProps {
   onExport?: (row: ProjectTableRow) => void;
   onDelete?: (projectId: string) => void;
   canDelete?: boolean;
+  /** Only passed when the user may create projects. */
+  onCreateProject?: (teamId: string) => void;
 }
 
 function TeamKpiLine({ section }: { section: ProjectTeamStreamSection }) {
@@ -170,6 +173,7 @@ export function ProjectTeamCommandCenter({
   onExport,
   onDelete,
   canDelete,
+  onCreateProject,
 }: ProjectTeamCommandCenterProps) {
   const listProps = {
     customers,
@@ -198,6 +202,27 @@ export function ProjectTeamCommandCenter({
     <Stack spacing={0}>
       {sections.map((teamSection) => (
         <TeamPanel key={teamSection.teamId ?? 'unassigned'} section={teamSection}>
+          {!teamSection.streams.length ? (
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between', py: 1, px: 0.5 }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                No projects have been assigned to this team yet.
+              </Typography>
+              {onCreateProject && teamSection.teamId ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => onCreateProject(teamSection.teamId as string)}
+                >
+                  Create project
+                </Button>
+              ) : null}
+            </Stack>
+          ) : null}
           {teamSection.streams.map((streamSection) => (
             <ProjectStreamPanel
               key={`${teamSection.teamId ?? 'unassigned'}-${streamSection.streamId ?? 'unassigned'}`}

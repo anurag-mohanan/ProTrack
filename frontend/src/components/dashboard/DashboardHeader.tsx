@@ -68,7 +68,7 @@ export function DashboardHeader({
             variant="caption"
             sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em', mt: 0.25 }}
           >
-            Engineering Overview
+            Operational Dashboard
           </Typography>
           {summaryLine ? (
             <Typography

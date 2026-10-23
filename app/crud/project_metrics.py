@@ -13,7 +13,11 @@ from app.services.project_calculation_service import (
     calculate_hours,
     calculate_progress,
 )
-from app.services.project_template_service import can_change_project_template
+from app.services.project_template_service import (
+    can_change_project_template,
+    projects_with_logged_milestone_hours,
+    template_change_blocked_reason,
+)
 
 
 def _batch_workstream_summaries(
@@ -82,7 +86,9 @@ def _batch_display_names(
     Avoids per-project (N+1) queries by loading each related table once.
     """
 
-    customer_ids = {p.customer_id for p in projects if p.customer_id}
+    customer_ids = {p.customer_id for p in projects if p.customer_id} | {
+        p.end_customer_id for p in projects if p.end_customer_id
+    }
     type_ids = {p.project_type_id for p in projects if p.project_type_id}
     small_task_type_ids = {
         p.small_task_type_id for p in projects if p.small_task_type_id
@@ -160,8 +166,11 @@ def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dic
     team = names["teams"].get(project.team_id)
     small_task_type = names["small_task_types"].get(project.small_task_type_id)
     stream = names["streams"].get(project.stream_id)
+    end_customer = names["customers"].get(project.end_customer_id)
     return {
         "customer_name": getattr(customer, "name", None),
+        "end_customer_name": getattr(end_customer, "name", None),
+        "actual_completion_date": project.completed_at.date() if project.completed_at else None,
         "project_type_name": getattr(project_type, "name", None),
         "working_model_name": getattr(working_model, "name", None),
         "working_model_code": getattr(working_model, "code", None),
@@ -172,6 +181,20 @@ def _name_updates(project: Project, names: dict[str, dict[UUID, object]]) -> dic
         "designer_name": _full_name(names["users"].get(project.designer_id)),
         "surfacer_name": _full_name(names["users"].get(project.surfacer_id)),
     }
+
+
+def _batch_stage_estimate_flags(db: Session, project_ids: list[UUID]) -> set[UUID]:
+    from app.models.models import ProjectStageEstimate
+
+    if not project_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(ProjectStageEstimate.project_id)
+            .where(ProjectStageEstimate.project_id.in_(project_ids))
+            .distinct()
+        ).all()
+    )
 
 
 def build_project_read(db: Session, project: Project) -> ProjectRead:
@@ -205,6 +228,8 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
             "needs_setup": project_needs_setup(project),
             "setup_gaps": gaps,
             "workstreams": workstreams.get(project.id, []),
+            "stage_estimates_configured": project.id
+            in _batch_stage_estimate_flags(db, [project.id]),
             **_name_updates(project, names),
         }
     )
@@ -225,9 +250,15 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     milestone_names = _batch_current_milestones(db, project_ids)
     names = _batch_display_names(db, projects)
     workstreams = _batch_workstream_summaries(db, project_ids)
+    configured = _batch_stage_estimate_flags(db, project_ids)
+    logged_hours = projects_with_logged_milestone_hours(db, project_ids)
     reads: list[ProjectRead] = []
     for project in projects:
-        can_change, blocked_reason = can_change_project_template(db, project.id)
+        blocked_reason = template_change_blocked_reason(
+            has_completed_milestones=progress_by_project[project.id].completed_milestones > 0,
+            has_logged_hours=project.id in logged_hours,
+        )
+        can_change = blocked_reason is None
         gaps = project_setup_gaps(project)
         reads.append(
             ProjectRead.model_validate(project, from_attributes=True).model_copy(
@@ -248,6 +279,7 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
                     "needs_setup": project_needs_setup(project),
                     "setup_gaps": gaps,
                     "workstreams": workstreams.get(project.id, []),
+                    "stage_estimates_configured": project.id in configured,
                     **_name_updates(project, names),
                 }
             )

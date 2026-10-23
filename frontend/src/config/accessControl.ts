@@ -89,6 +89,10 @@ export const SPECIAL_MANAGE_COMPANY_SETTINGS = 'manage_company_settings';
 export const SPECIAL_MANAGE_PROJECT_SETTINGS = 'manage_project_settings';
 export const SPECIAL_VIEW_REPORTS = 'view_reports';
 export const SPECIAL_VIEW_RESOURCE_PLANNING = 'view_resource_planning';
+export const SPECIAL_MANAGE_PROJECT_TEMPLATES = 'manage_project_templates';
+export const SPECIAL_REVISE_ESTIMATES = 'revise_estimates';
+export const SPECIAL_APPROVE_BASELINES = 'approve_baselines';
+export const SPECIAL_REOPEN_PROJECTS = 'reopen_projects';
 export const SPECIAL_MANAGE_RESOURCE_SHIFTS = 'manage_resource_shifts';
 export const SPECIAL_ASSIGN_RESOURCE_SHIFTS = 'assign_resource_shifts';
 export const SPECIAL_VIEW_IT_OPERATIONS = 'view_it_operations';
@@ -125,6 +129,10 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_MANAGE_PROJECT_SETTINGS
   | typeof SPECIAL_VIEW_REPORTS
   | typeof SPECIAL_VIEW_RESOURCE_PLANNING
+  | typeof SPECIAL_MANAGE_PROJECT_TEMPLATES
+  | typeof SPECIAL_REVISE_ESTIMATES
+  | typeof SPECIAL_APPROVE_BASELINES
+  | typeof SPECIAL_REOPEN_PROJECTS
   | typeof SPECIAL_MANAGE_RESOURCE_SHIFTS
   | typeof SPECIAL_ASSIGN_RESOURCE_SHIFTS
   | typeof SPECIAL_VIEW_IT_OPERATIONS
@@ -161,6 +169,10 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_MANAGE_PROJECT_SETTINGS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
+  SPECIAL_MANAGE_PROJECT_TEMPLATES,
+  SPECIAL_REVISE_ESTIMATES,
+  SPECIAL_APPROVE_BASELINES,
+  SPECIAL_REOPEN_PROJECTS,
   SPECIAL_MANAGE_RESOURCE_SHIFTS,
   SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   SPECIAL_VIEW_IT_OPERATIONS,
@@ -198,6 +210,10 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_MANAGE_PROJECT_SETTINGS]: 'Manage Project Settings',
   [SPECIAL_VIEW_REPORTS]: 'View Reports',
   [SPECIAL_VIEW_RESOURCE_PLANNING]: 'View Resource Planning',
+  [SPECIAL_MANAGE_PROJECT_TEMPLATES]: 'Manage Project Templates',
+  [SPECIAL_REVISE_ESTIMATES]: 'Revise Stage Estimates',
+  [SPECIAL_APPROVE_BASELINES]: 'Approve Baseline Revisions',
+  [SPECIAL_REOPEN_PROJECTS]: 'Reopen Completed Projects',
   [SPECIAL_MANAGE_RESOURCE_SHIFTS]: 'Manage Resource Shifts',
   [SPECIAL_ASSIGN_RESOURCE_SHIFTS]: 'Assign Resource Shifts',
   [SPECIAL_VIEW_IT_OPERATIONS]: 'View IT Operations',

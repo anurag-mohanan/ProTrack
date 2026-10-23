@@ -24,6 +24,7 @@ from app.models.it_operations import (
     WorkstationPackage,
     WorkstationPackageAssignment,
 )
+from app.core.user_types import employee_user_clause
 from app.models.models import (
     ExitInterview,
     OnboardingChecklist,
@@ -157,7 +158,7 @@ def _load_base(
     stmt = (
         select(User)
         .options(selectinload(User.manager), selectinload(User.org_department))
-        .where(User.is_deleted.is_(False))
+        .where(User.is_deleted.is_(False), employee_user_clause())
     )
     if scoped_user_ids is not None:
         stmt = stmt.where(User.id.in_(scoped_user_ids or {UUID(int=0)}))
@@ -695,7 +696,7 @@ def segment_employees(
 
 
 def filter_options(db: Session, *, scoped_user_ids: set[UUID] | None) -> dict[str, Any]:
-    user_filter = [User.is_deleted.is_(False)]
+    user_filter = [User.is_deleted.is_(False), employee_user_clause()]
     if scoped_user_ids is not None:
         user_filter.append(User.id.in_(scoped_user_ids or {UUID(int=0)}))
     departments = db.execute(

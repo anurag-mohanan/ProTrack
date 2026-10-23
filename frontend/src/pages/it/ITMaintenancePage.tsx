@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { fetchAssetsPaginated, fetchOpenItRequests, itOperationsKeys } from '../../api/itOperations';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ASSET_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import { ClientPaginatedDataGrid } from '../../components/common/ClientPaginatedDataGrid';
@@ -56,6 +58,7 @@ export function ITMaintenancePage() {
           </ProsohmButton>
         }
       />
+      <ITAreaTabs items={IT_ASSET_AREA_TABS} />
 
       <Stack spacing={2.5}>
         <ContentCard title="Assets in maintenance" noPadding>

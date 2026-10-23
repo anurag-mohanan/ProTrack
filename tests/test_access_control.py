@@ -5,9 +5,11 @@ import json
 from app.core.access_control import (
     MODULE_CALENDAR,
     MODULE_DASHBOARD,
+    MODULE_PERFORMANCE,
     MODULE_PLANNING_BOARD,
     MODULE_PROJECTS,
     MODULE_REPORTS,
+    MODULE_TICKETS,
     MODULE_TIMESHEETS,
     SPECIAL_CREATE_PROJECTS,
     default_modules_for_role,
@@ -55,7 +57,8 @@ def test_custom_module_access_overrides_defaults(session):
     session.commit()
 
     modules = resolve_user_modules(user, "Designer")
-    assert modules == [MODULE_DASHBOARD, MODULE_REPORTS]
+    # Help Desk is company-wide and Performance follows Dashboard.
+    assert modules == [MODULE_DASHBOARD, MODULE_PERFORMANCE, MODULE_REPORTS, MODULE_TICKETS]
 
 
 def test_custom_special_permissions(session):
@@ -99,7 +102,8 @@ def test_user_update_persists_module_access(client, session):
 
     user = session.get(User, user_id)
     modules = resolve_user_modules(user, "Designer")
-    assert modules == [MODULE_DASHBOARD, MODULE_REPORTS]
+    # Help Desk is company-wide and Performance follows Dashboard.
+    assert modules == [MODULE_DASHBOARD, MODULE_PERFORMANCE, MODULE_REPORTS, MODULE_TICKETS]
     permissions = resolve_user_special_permissions(user, "Designer")
     assert permissions == [SPECIAL_CREATE_PROJECTS]
 

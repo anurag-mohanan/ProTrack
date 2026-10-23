@@ -60,11 +60,19 @@ def role_is_non_capacity_resource(role_name: str | None) -> bool:
 
 def user_requires_timesheet(user: User) -> bool:
     """Per-user flag (role default at create; admin may override)."""
+    from app.core.user_types import is_virtual_user
+
+    if is_virtual_user(user):
+        return False
     return bool(getattr(user, "requires_timesheet", False))
 
 
 def user_can_enter_own_timesheet(db: Session, user: User) -> bool:
     """Personal timesheet form / optional logging (not the same as required)."""
+    from app.core.user_types import is_virtual_user
+
+    if is_virtual_user(user):
+        return False
     role_name = normalize_role_name(get_role_name(db, user))
     if role_name in OWN_TIMESHEET_EXEMPT_ROLES:
         return False

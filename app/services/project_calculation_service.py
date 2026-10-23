@@ -80,22 +80,18 @@ def batch_calculate_progress(
     if not project_ids:
         return {}
 
-    total_rows = db.execute(
-        select(Milestone.project_id, func.count())
+    rows = db.execute(
+        select(
+            Milestone.project_id,
+            func.count(),
+            func.count().filter(Milestone.status == MilestoneStatus.completed),
+        )
         .where(Milestone.project_id.in_(project_ids))
         .group_by(Milestone.project_id)
     ).all()
-    completed_rows = db.execute(
-        select(Milestone.project_id, func.count())
-        .where(
-            Milestone.project_id.in_(project_ids),
-            Milestone.status == MilestoneStatus.completed,
-        )
-        .group_by(Milestone.project_id)
-    ).all()
 
-    totals = {project_id: int(count) for project_id, count in total_rows}
-    completed_map = {project_id: int(count) for project_id, count in completed_rows}
+    totals = {project_id: int(total) for project_id, total, _ in rows}
+    completed_map = {project_id: int(done or 0) for project_id, _, done in rows}
 
     progress_by_project: dict[UUID, MilestoneProgress] = {}
     for project_id in project_ids:
@@ -260,9 +256,12 @@ def recalculate_project(db: Session, project_id: UUID | str) -> Project | None:
     if project is None:
         return None
 
+    from app.services.scheduling_service import recalculate_forecast
+
     hours = calculate_hours(db, project)
     project.actual_hours = hours.actual
     project.health = calculate_project_health(project, db=db)
+    recalculate_forecast(db, project)
 
     db.add(project)
     db.commit()

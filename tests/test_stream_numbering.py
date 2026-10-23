@@ -65,6 +65,7 @@ def test_project_create_auto_codes_from_stream_numbering(client, session):
         json={
             "tool_number": "CUST-TOOL-99",
             "part_description": "Auto numbered part",
+            "project_classification": "full_design",
             "customer_id": str(IDS["customer"]),
             "stream_id": stream_id,
             "code": None,
@@ -103,6 +104,7 @@ def test_project_keeps_customer_supplied_code_when_provided(client):
         json={
             "tool_number": "CUST-SUPPLIED-1",
             "part_description": "Customer number wins",
+            "project_classification": "full_design",
             "customer_id": str(IDS["customer"]),
             "stream_id": stream_id,
             "code": "CUSTOMER-PN-7788",

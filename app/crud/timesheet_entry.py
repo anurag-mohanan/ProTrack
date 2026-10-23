@@ -16,6 +16,7 @@ from app.core.timesheet_locking import (
     TIMESHEET_CALENDAR_LOCKED_MESSAGE,
     is_timesheet_month_calendar_locked,
 )
+from app.core.user_types import is_virtual_user
 from app.crud.base import CRUDBase
 from app.crud.timesheet_entry_metrics import build_timesheet_entry_read, build_timesheet_entry_reads
 from app.services.project_calculation_service import recalculate_project
@@ -209,6 +210,13 @@ class CRUDTimesheetEntry(
         return TimesheetEntryBulkResponse(upserted=upserted, deleted=deleted)
 
     def create(self, db: Session, *, obj_in: TimesheetEntryCreate, actor=None) -> TimesheetEntry:
+        sheet = db.get(Timesheet, obj_in.timesheet_id) if obj_in.timesheet_id else None
+        owner = db.get(User, sheet.user_id) if sheet is not None else None
+        if is_virtual_user(owner):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Virtual/system accounts do not record timesheet hours.",
+            )
         if actor is not None:
             self._ensure_editable(
                 db,

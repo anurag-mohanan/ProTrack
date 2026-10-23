@@ -27,6 +27,7 @@ function normalizeFilters(raw: unknown): ProjectCommandCenterFilters {
       ? raw.customerIds.filter((id): id is string => typeof id === 'string')
       : base.customerIds,
     projectTypeId: typeof raw.projectTypeId === 'string' ? raw.projectTypeId : base.projectTypeId,
+    endCustomerId: typeof raw.endCustomerId === 'string' ? raw.endCustomerId : base.endCustomerId,
     teamIds: Array.isArray(raw.teamIds)
       ? raw.teamIds.filter((id): id is string => typeof id === 'string')
       : base.teamIds,

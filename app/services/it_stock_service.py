@@ -223,6 +223,71 @@ def _notify(db: Session, item: InventoryItem, lv: dict[str, Any], alert_type: st
         )
 
 
+def _restock_ticket_key(alert: StockAlert) -> str:
+    return f"it_stock_alert:{alert.id}"
+
+
+def _raise_restock_ticket(
+    db: Session, item: InventoryItem, alert: StockAlert, lv: dict[str, Any], actor: User | None
+) -> None:
+    """One restock ticket per alert episode (idempotent on the alert id).
+
+    Only raised from stock write paths, never from a read. With no acting user
+    there is no truthful requester, so the alert notification stands alone.
+    """
+    if actor is None:
+        return
+    from app.services import ticket_workflow_service as workflow
+
+    label = "out of stock" if alert.alert_type == STATUS_OUT else "below minimum"
+    workflow.create_ticket(
+        db,
+        title=f"Restock {item.name} — {label}",
+        description=(
+            f"{item.name} is {label}.\n"
+            f"Available: {lv['available']} · Minimum: {lv['min_stock']} · "
+            f"Shortfall: {lv['shortfall']} · Recommended order: {lv['recommended_order_qty']}.\n\n"
+            "This ticket resolves automatically when stock is back at or above the minimum."
+        ),
+        category="it",
+        subcategory="stock.restock",
+        priority="urgent" if alert.alert_type == STATUS_OUT else "high",
+        requester=actor,
+        actor=actor,
+        source_module="it_stock",
+        source_record_id=str(alert.id),
+        idempotency_key=_restock_ticket_key(alert),
+        related_stock_item_id=item.id,
+    )
+
+
+def _restock_ticket(db: Session, alert: StockAlert):
+    from app.services import ticket_workflow_service as workflow
+
+    return workflow.find_by_key(db, _restock_ticket_key(alert))
+
+
+def _resolve_restock_ticket(
+    db: Session, alert: StockAlert, item: InventoryItem, lv: dict[str, Any], actor: User | None
+) -> None:
+    from app.services import ticket_workflow_service as workflow
+    from app.services.ticketing_service import OPEN_STATUSES
+
+    ticket = _restock_ticket(db, alert)
+    if ticket is None or ticket.status not in OPEN_STATUSES:
+        return
+    workflow.transition(
+        db,
+        ticket,
+        to_status="resolved",
+        actor=actor,
+        resolution=f"Stock replenished: {lv['available']} available (minimum {item.min_stock}).",
+        work_performed="Stock level restored by a recorded stock movement; alert episode closed.",
+        resolution_category="fulfilled",
+        source="it_stock",
+    )
+
+
 def active_alert(db: Session, item_id: UUID) -> StockAlert | None:
     return db.scalar(
         select(StockAlert).where(StockAlert.item_id == item_id, StockAlert.status == "active").limit(1)
@@ -248,6 +313,7 @@ def evaluate_alert(db: Session, item: InventoryItem, *, actor: User | None) -> S
             current.resolved_at = datetime.now(UTC)
             db.add(current)
             _audit(db, actor, item.id, ActivityAction.it_stock_alert_resolved, {"available": lv["available"], "min_stock": minimum})
+            _resolve_restock_ticket(db, current, item, lv, actor)
         return None
 
     if current is None:
@@ -263,6 +329,7 @@ def evaluate_alert(db: Session, item: InventoryItem, *, actor: User | None) -> S
         db.flush()
         _audit(db, actor, item.id, ActivityAction.it_stock_alert_raised, {"alert_type": condition, "available": lv["available"], "min_stock": minimum})
         _notify(db, item, lv, condition)
+        _raise_restock_ticket(db, item, current, lv, actor)
         return current
 
     escalated = current.alert_type != STATUS_OUT and condition == STATUS_OUT
@@ -273,6 +340,13 @@ def evaluate_alert(db: Session, item: InventoryItem, *, actor: User | None) -> S
     if escalated:
         _audit(db, actor, item.id, ActivityAction.it_stock_alert_raised, {"alert_type": condition, "available": lv["available"], "min_stock": minimum})
         _notify(db, item, lv, condition)
+        ticket = _restock_ticket(db, current)
+        if ticket is None:
+            _raise_restock_ticket(db, item, current, lv, actor)
+        elif actor is not None and ticket.priority != "urgent":
+            from app.services import ticket_workflow_service as workflow
+
+            workflow.update_fields(db, ticket, actor=actor, data={"priority": "urgent"})
     return current
 
 

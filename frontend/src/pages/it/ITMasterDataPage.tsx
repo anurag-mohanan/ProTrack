@@ -43,7 +43,8 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
-import { ITSectionSubnav, IT_ADMIN_TABS } from '../../components/it/ITSectionSubnav';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ADMIN_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ContentCard } from '../../components/ui/cards';
 import { ProsohmButton } from '../../components/ui/ProsohmButton';
 import {
@@ -440,8 +441,8 @@ export function ITMasterDataPage() {
           ) : undefined
         }
       />
+      <ITAreaTabs items={IT_ADMIN_AREA_TABS} />
 
-      <ITSectionSubnav items={IT_ADMIN_TABS} />
 
       <ContentCard noPadding>
         <Tabs

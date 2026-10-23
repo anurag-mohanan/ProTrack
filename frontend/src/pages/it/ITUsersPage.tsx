@@ -22,6 +22,8 @@ import { getErrorMessage } from '../../api/client';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ASSET_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
 import { FormSelect, SearchToolbar, FormField } from '../../components/ui/design-system';
@@ -146,6 +148,7 @@ export function ITUsersPage() {
         title="People"
         subtitle="ProTrack employees and their assigned computers. This is the User master — not a separate employee database, and not a top-level IT hub."
       />
+      <ITAreaTabs items={IT_ASSET_AREA_TABS} />
 
       <SearchToolbar sticky>
         <FormSelect

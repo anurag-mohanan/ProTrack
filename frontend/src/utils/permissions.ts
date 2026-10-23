@@ -68,6 +68,10 @@ import {
   SPECIAL_VIEW_IT_REPORTS,
   SPECIAL_VIEW_REPORTS,
   SPECIAL_VIEW_RESOURCE_PLANNING,
+  SPECIAL_MANAGE_PROJECT_TEMPLATES,
+  SPECIAL_REVISE_ESTIMATES,
+  SPECIAL_APPROVE_BASELINES,
+  SPECIAL_REOPEN_PROJECTS,
   type ModuleKey,
   type SpecialPermissionKey,
 } from '../config/accessControl';
@@ -242,6 +246,10 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
     SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+    SPECIAL_MANAGE_PROJECT_TEMPLATES,
+    SPECIAL_REVISE_ESTIMATES,
+    SPECIAL_APPROVE_BASELINES,
+    SPECIAL_REOPEN_PROJECTS,
   ],
   [ROLES.DESIGN_LEADER]: [
     SPECIAL_CREATE_PROJECTS,
@@ -250,6 +258,7 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_APPROVE_TIMESHEETS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_EXPORT_REPORTS,
+    SPECIAL_REVISE_ESTIMATES,
   ],
   [ROLES.SENIOR_DESIGNER]: [SPECIAL_CREATE_PROJECTS, SPECIAL_EDIT_PROJECTS],
   [ROLES.READ_ONLY]: [],
@@ -538,6 +547,10 @@ export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermission
     SPECIAL_VIEW_RESOURCE_PLANNING,
     SPECIAL_ASSIGN_RESOURCE_SHIFTS,
     SPECIAL_MANAGE_RESOURCE_SHIFTS,
+    SPECIAL_MANAGE_PROJECT_TEMPLATES,
+    SPECIAL_REVISE_ESTIMATES,
+    SPECIAL_APPROVE_BASELINES,
+    SPECIAL_REOPEN_PROJECTS,
   ] as const) {
     if (roleDefaults.includes(perm)) merged.add(perm);
   }
@@ -766,6 +779,22 @@ export function canEditProject(roleNameOrContext: string | AccessContext): boole
 export function canManageProjectSettings(roleNameOrContext: string | AccessContext): boolean {
   const ctx = toAccessContext(roleNameOrContext);
   return userHasSpecial(ctx, SPECIAL_MANAGE_PROJECT_SETTINGS);
+}
+
+export function canManageProjectTemplates(roleNameOrContext: string | AccessContext): boolean {
+  return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_MANAGE_PROJECT_TEMPLATES);
+}
+
+export function canReviseEstimates(roleNameOrContext: string | AccessContext): boolean {
+  return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_REVISE_ESTIMATES);
+}
+
+export function canApproveBaselines(roleNameOrContext: string | AccessContext): boolean {
+  return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_APPROVE_BASELINES);
+}
+
+export function canReopenProjects(roleNameOrContext: string | AccessContext): boolean {
+  return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_REOPEN_PROJECTS);
 }
 
 export function canViewReports(roleNameOrContext: string | AccessContext): boolean {

@@ -33,7 +33,8 @@ import type {
 const STATUS_OPTIONS = [
   { value: 'available', label: 'Available' },
   { value: 'maintenance', label: 'Maintenance' },
-  { value: 'awaiting_return', label: 'Reserved / Awaiting return' },
+  { value: 'reserved', label: 'Reserved' },
+  { value: 'awaiting_return', label: 'Awaiting return' },
   { value: 'retired', label: 'Retired' },
   { value: 'disposed', label: 'Disposed' },
 ];

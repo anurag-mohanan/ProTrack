@@ -15,4 +15,8 @@ def default_requires_salary_for_role(role_name: str) -> bool:
 
 def user_requires_salary(user: User) -> bool:
     """Per-user flag (role default at create; admin may override)."""
+    from app.core.user_types import is_virtual_user
+
+    if is_virtual_user(user):
+        return False
     return bool(getattr(user, "requires_salary", True))

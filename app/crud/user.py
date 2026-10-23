@@ -26,7 +26,7 @@ from app.services.user_team_service import (
     sync_user_team_assignments,
     sync_user_team_membership,
 )
-from app.models.enums import TeamRelationshipType
+from app.models.enums import TeamRelationshipType, UserType
 from app.models.models import Project, Role, Team, TeamMember, User
 from app.models.foundation import Department
 from app.schemas.identity import (
@@ -206,6 +206,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         search: str | None = None,
         team_id: UUID | None = None,
         employment_type: str | None = None,
+        user_type: str | None = None,
     ):
         stmt = select(User)
         if deleted_only:
@@ -220,6 +221,12 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             stmt = stmt.where(User.is_active == is_active)
         if employment_type is not None:
             stmt = stmt.where(User.employment_type == employment_type)
+        if user_type == UserType.virtual.value:
+            stmt = stmt.where(User.user_type == UserType.virtual)
+        elif user_type == UserType.employee.value:
+            from app.core.user_types import employee_user_clause
+
+            stmt = stmt.where(employee_user_clause())
         if team_id is not None:
             assigned_user_ids = select(TeamMember.user_id).where(TeamMember.team_id == team_id)
             stmt = stmt.where(or_(User.team_id == team_id, User.id.in_(assigned_user_ids)))
@@ -249,6 +256,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         search: str | None = None,
         team_id: UUID | None = None,
         employment_type: str | None = None,
+        user_type: str | None = None,
     ) -> list[User]:
         stmt = self._user_list_stmt(
             role_id=role_id,
@@ -259,6 +267,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             search=search,
             team_id=team_id,
             employment_type=employment_type,
+            user_type=user_type,
         )
         stmt = apply_sort(stmt, User, sort or "-created_at")
         return list(db.scalars(stmt.offset(skip).limit(limit)).all())
@@ -275,6 +284,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         search: str | None = None,
         team_id: UUID | None = None,
         employment_type: str | None = None,
+        user_type: str | None = None,
     ) -> int:
         stmt = self._user_list_stmt(
             role_id=role_id,
@@ -285,6 +295,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             search=search,
             team_id=team_id,
             employment_type=employment_type,
+            user_type=user_type,
         )
         return int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
 
@@ -304,6 +315,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         search: str | None = None,
         team_id: UUID | None = None,
         employment_type: str | None = None,
+        user_type: str | None = None,
     ) -> PaginatedResponse[Any]:
         resolved_skip = skip if skip is not None else (page - 1) * page_size
         resolved_limit = limit if limit is not None else page_size
@@ -316,6 +328,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "search": search,
             "team_id": team_id,
             "employment_type": employment_type,
+            "user_type": user_type,
         }
         total = self.count_users(db, **filter_kwargs)
         items = self.query_users(
@@ -343,6 +356,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             data["requires_timesheet"] = default_requires_timesheet_for_role(role_name)
         if data.get("requires_salary") is None:
             data["requires_salary"] = default_requires_salary_for_role(role_name)
+        if data.get("user_type") == UserType.virtual:
+            data["requires_timesheet"] = False
+            data["requires_salary"] = False
         db_obj = User(
             **data,
             team_id=None,
@@ -413,6 +429,25 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
                 update_data["requires_salary"] = default_requires_salary_for_role(
                     new_role.name
                 )
+        new_type = update_data.get("user_type")
+        if new_type == UserType.virtual:
+            # History (timesheets, assignments) is kept; only future obligations stop.
+            update_data["requires_timesheet"] = False
+            update_data["requires_salary"] = False
+        elif (
+            new_type == UserType.employee
+            and db_obj.user_type == UserType.virtual
+        ):
+            role_for_defaults = db.get(Role, update_data.get("role_id") or db_obj.role_id)
+            if role_for_defaults is not None:
+                if not requires_explicit:
+                    update_data["requires_timesheet"] = default_requires_timesheet_for_role(
+                        role_for_defaults.name
+                    )
+                if not salary_explicit:
+                    update_data["requires_salary"] = default_requires_salary_for_role(
+                        role_for_defaults.name
+                    )
         sod_role_name = None
         if role_changed:
             new_role = db.get(Role, update_data["role_id"])

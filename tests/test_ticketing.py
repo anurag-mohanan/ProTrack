@@ -59,7 +59,9 @@ def test_employee_can_raise_and_track_own_ticket(client, session):
     ticket = _create_ticket(client, headers)
 
     assert ticket["ticket_number"].startswith("TKT-")
-    assert ticket["status"] == "open"
+    # No IT owner is configured in the fixture, so the ticket waits in the queue.
+    assert ticket["status"] == "new"
+    assert ticket["needs_owner"] is True
     assert ticket["category"] == "it"
     assert ticket["can_manage"] is False
 
@@ -150,13 +152,25 @@ def test_agent_assign_and_resolve_lifecycle(client, session):
     assert assigned.status_code == 200, assigned.text
     body = assigned.json()
     assert body["assignee_id"] == str(agent_user.id)
-    # Picking up an open ticket moves it into progress.
-    assert body["status"] == "in_progress"
+    # Assigning a new ticket opens it; starting work is a separate action.
+    assert body["status"] == "open"
+    assert body["needs_owner"] is False
+
+    missing_work = client.post(
+        f"/api/v1/tickets/{ticket['id']}/status",
+        headers=agent,
+        json={"status": "resolved", "resolution": "Replaced the RAM module."},
+    )
+    assert missing_work.status_code == 422
 
     resolved = client.post(
         f"/api/v1/tickets/{ticket['id']}/status",
         headers=agent,
-        json={"status": "resolved", "resolution": "Replaced the RAM module."},
+        json={
+            "status": "resolved",
+            "resolution": "Replaced the RAM module.",
+            "work_performed": "Swapped the faulty DIMM and ran memtest.",
+        },
     )
     assert resolved.status_code == 200, resolved.text
     resolved_body = resolved.json()
@@ -196,6 +210,13 @@ def test_requester_can_cancel_own_ticket(client, session):
         f"/api/v1/tickets/{ticket['id']}/status",
         headers=headers,
         json={"status": "cancelled"},
+    )
+    assert response.status_code == 422
+
+    response = client.post(
+        f"/api/v1/tickets/{ticket['id']}/status",
+        headers=headers,
+        json={"status": "cancelled", "reason": "Fixed itself after a restart."},
     )
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "cancelled"
@@ -267,7 +288,7 @@ def test_stats_reflect_visible_tickets(client, session):
     assert response.status_code == 200, response.text
     stats = response.json()
     assert stats["raised_by_me"] >= 1
-    assert stats["open"] >= 1
+    assert stats["active"] >= 1
 
 
 # ---------------------------------------------------------------------------

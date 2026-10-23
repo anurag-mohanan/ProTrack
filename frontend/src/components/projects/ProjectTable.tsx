@@ -323,6 +323,15 @@ function buildColumns(
       ),
     },
     {
+      field: 'end_customer_name',
+      headerName: 'End Customer',
+      renderCell: (params) => (
+        <Box component="span" sx={{ fontSize: '0.78rem', ...autoFitFlexCellSx }}>
+          {displayOrDash(params.value)}
+        </Box>
+      ),
+    },
+    {
       field: 'hours_comparison',
       headerName: 'Hours',
       sortable: true,

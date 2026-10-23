@@ -16,6 +16,11 @@ from typing import Iterable
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.user_types import (
+    VIRTUAL_USER_EXCLUDED_MESSAGE,
+    employee_user_clause,
+    is_virtual_user,
+)
 from app.models.models import Team, TeamMember, User
 from app.models.resource_shifts import (
     ASSIGNMENT_TYPE_PERMANENT,
@@ -583,6 +588,10 @@ def assign_shift(db: Session, payload: dict, *, commit: bool = True) -> Resource
         raise ShiftValidationError(
             f"{display_name(user)} is inactive — shifts can only be assigned to active employees."
         )
+    if is_virtual_user(user):
+        raise ShiftValidationError(
+            VIRTUAL_USER_EXCLUDED_MESSAGE.format(name=display_name(user), purpose="shift rosters")
+        )
 
     if assignment_type == ASSIGNMENT_TYPE_ROTATIONAL and not rotation_pattern:
         raise ShiftValidationError("Rotational assignments require a rotation pattern.")
@@ -809,7 +818,10 @@ def shift_calendar(
         raise ShiftValidationError("'to' must not precede 'from'.")
 
     stmt = select(User).where(
-        User.is_deleted.is_(False), User.is_active.is_(True), User.is_archived.is_(False)
+        User.is_deleted.is_(False),
+        User.is_active.is_(True),
+        User.is_archived.is_(False),
+        employee_user_clause(),
     )
     if team_id is not None:
         scoped = _team_scoped_user_ids(db, team_id)
@@ -859,7 +871,9 @@ def shift_calendar(
 def shift_overview(db: Session, *, on_date: date | None = None, team_id: uuid.UUID | None = None) -> dict:
     """Management summary: headcount by shift, permanent vs rotational, unassigned."""
     on_date = on_date or date.today()
-    stmt = select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+    stmt = select(User).where(
+        User.is_deleted.is_(False), User.is_active.is_(True), employee_user_clause()
+    )
     if team_id is not None:
         scoped = _team_scoped_user_ids(db, team_id)
         if not scoped:
@@ -920,7 +934,9 @@ def shift_overview(db: Session, *, on_date: date | None = None, team_id: uuid.UU
 def shift_board(db: Session, *, on_date: date | None = None, team_id: uuid.UUID | None = None) -> dict:
     """Visual board: employees grouped under each shift for ``on_date``."""
     on_date = on_date or date.today()
-    stmt = select(User).where(User.is_deleted.is_(False), User.is_active.is_(True))
+    stmt = select(User).where(
+        User.is_deleted.is_(False), User.is_active.is_(True), employee_user_clause()
+    )
     if team_id is not None:
         scoped = _team_scoped_user_ids(db, team_id)
         if not scoped:

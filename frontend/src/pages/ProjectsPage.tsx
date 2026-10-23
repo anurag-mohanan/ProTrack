@@ -71,6 +71,7 @@ import {
   applyKpiQuickFilter,
   computeProjectPortfolioMetrics,
   countActiveSidebarFilters,
+  hasActiveProjectListNarrowing,
   defaultProjectCommandCenterFilters,
   filterProjectsForCommandCenter,
   getProjectActiveFilterChips,
@@ -140,6 +141,7 @@ export function ProjectsPage() {
     initialFiltersFromSession,
   );
   const [createOpen, setCreateOpen] = useState(false);
+  const [createTeamId, setCreateTeamId] = useState<string | null>(null);
   const [editProject, setEditProject] = useState<ProjectTableRow | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectTableRow | null>(null);
   const [archiveId, setArchiveId] = useState<string | null>(null);
@@ -263,6 +265,8 @@ export function ProjectsPage() {
         appliedFilters.executionStatus === 'all' ? undefined : appliedFilters.executionStatus,
       customer_ids:
         appliedFilters.customerIds.length > 0 ? appliedFilters.customerIds : undefined,
+      end_customer_id:
+        appliedFilters.endCustomerId === 'all' ? undefined : appliedFilters.endCustomerId,
       team_ids:
         selectedTeamIds.length > 0
           ? selectedTeamIds
@@ -570,6 +574,38 @@ export function ProjectsPage() {
     ],
   );
 
+  /** Project-enabled teams this user is responsible for; shown even when they have no projects yet. */
+  const emptyTeamIds = useMemo(() => {
+    if (
+      hasActiveProjectListNarrowing(appliedFilters)
+      || selectedStreamIds.length > 0
+      || selectedTeamIds.length > 0
+    ) {
+      return [];
+    }
+    const eligible = (teamsQuery.data ?? []).filter(
+      (team) => team.is_active && team.projects_enabled !== false,
+    );
+    if (scopeByLeaderTeams) {
+      const led = new Set(leaderTeamIds);
+      return eligible.filter((team) => led.has(team.id)).map((team) => team.id);
+    }
+    if (isAdmin || (allowAllScope && portfolioScope === 'all')) {
+      return eligible.map((team) => team.id);
+    }
+    return [];
+  }, [
+    appliedFilters,
+    selectedStreamIds,
+    selectedTeamIds,
+    teamsQuery.data,
+    scopeByLeaderTeams,
+    leaderTeamIds,
+    isAdmin,
+    allowAllScope,
+    portfolioScope,
+  ]);
+
   const teamStreamSections = useMemo(
     () =>
       groupProjectsByTeamThenStream(
@@ -580,6 +616,7 @@ export function ProjectsPage() {
         {
           leaderTeamIds: scopeByLeaderTeams ? leaderTeamIds : undefined,
           includeEmptyLeaderTeams: false,
+          emptyTeamIds,
           preferredStreamOrder:
             selectedStreamIds.length > 0
               ? selectedStreamIds
@@ -595,6 +632,7 @@ export function ProjectsPage() {
       leaderTeamIds,
       selectedStreamIds,
       streamFilterOptions,
+      emptyTeamIds,
     ],
   );
 
@@ -698,6 +736,7 @@ export function ProjectsPage() {
           {
             tool_number: row.tool_number,
             customer_name: row.customer_name,
+            end_customer_name: row.end_customer_name ?? '',
             part_description: row.part_description,
             designer_name: row.designer_name,
             quoted_hours: row.quoted_hours,
@@ -708,6 +747,7 @@ export function ProjectsPage() {
         [
           { key: 'tool_number', header: 'Tool Number' },
           { key: 'customer_name', header: 'Customer' },
+          { key: 'end_customer_name', header: 'End Customer' },
           { key: 'part_description', header: 'Part Description' },
           { key: 'designer_name', header: 'Designer' },
           { key: 'quoted_hours', header: 'Quoted Hours' },
@@ -814,7 +854,13 @@ export function ProjectsPage() {
   );
 
   if (projectsQuery.error) {
-    return <ErrorState error={projectsQuery.error} title="Unable to load projects" />;
+    return (
+      <ErrorState
+        error={projectsQuery.error}
+        title="Unable to load projects"
+        onRetry={() => void projectsQuery.refetch()}
+      />
+    );
   }
 
   return (
@@ -959,7 +1005,13 @@ export function ProjectsPage() {
         <Box sx={{ width: '100%' }}>
           {tableLoading ? (
             <TableSkeleton rows={8} columns={8} />
-          ) : !commandCenterProjects.length ? (
+          ) : teamsQuery.error ? (
+            <ErrorState
+              error={teamsQuery.error}
+              title="Unable to load teams"
+              onRetry={() => void teamsQuery.refetch()}
+            />
+          ) : !commandCenterProjects.length && !teamStreamSections.length ? (
             <EmptyState
               title="No projects found"
               description={
@@ -983,6 +1035,14 @@ export function ProjectsPage() {
               onExport={handleExport}
               onDelete={canDelete ? setDeleteId : undefined}
               canDelete={canDelete}
+              onCreateProject={
+                showCreateProject
+                  ? (teamId) => {
+                      setCreateTeamId(teamId);
+                      setCreateOpen(true);
+                    }
+                  : undefined
+              }
             />
           )}
         </Box>
@@ -1010,9 +1070,14 @@ export function ProjectsPage() {
 
       <ProjectFormDialog
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        initialTeamId={createTeamId}
+        onClose={() => {
+          setCreateOpen(false);
+          setCreateTeamId(null);
+        }}
         onCreated={() => {
           setCreateOpen(false);
+          setCreateTeamId(null);
           invalidateAll();
         }}
       />

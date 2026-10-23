@@ -41,6 +41,8 @@ import {
 import { getErrorMessage } from '../../api/client';
 import { PageContainer } from '../../components/common/PageContainer';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ITAreaTabs } from '../../components/it/ITAreaTabs';
+import { IT_ADMIN_AREA_TABS } from '../../components/it/itAreaTabConfig';
 import { AssignmentAvailabilityPanel } from '../../components/it/AssignmentAvailabilityPanel';
 import { ServerPaginatedDataGrid } from '../../components/common/ServerPaginatedDataGrid';
 import { ContentCard } from '../../components/ui/cards';
@@ -564,6 +566,7 @@ export function ITComputersPage() {
           </Stack>
         }
       />
+      <ITAreaTabs items={IT_ADMIN_AREA_TABS} />
 
 
       <SearchToolbar sticky>

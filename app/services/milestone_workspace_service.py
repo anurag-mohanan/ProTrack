@@ -159,13 +159,36 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
 
 
 def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
-    total = _decimal(
-        db.scalar(
-            select(func.coalesce(func.sum(Milestone.planned_hours), 0)).where(
-                Milestone.project_id == project_id
-            )
+    """Current planned hours: stage estimates when configured, else milestone sum.
+
+    With stage estimates the total is the approved stage hours plus hours on
+    milestones outside the planned stages (e.g. Feasibility, release steps).
+    """
+    from app.models.enums import PLANNED_STAGES
+    from app.models.models import ProjectStageEstimate
+
+    stage_total = db.scalar(
+        select(func.sum(ProjectStageEstimate.current_hours)).where(
+            ProjectStageEstimate.project_id == project_id
         )
     )
+    if stage_total is not None:
+        unstaged = db.scalar(
+            select(func.coalesce(func.sum(Milestone.planned_hours), 0)).where(
+                Milestone.project_id == project_id,
+                (Milestone.project_stage.is_(None))
+                | (Milestone.project_stage.not_in(PLANNED_STAGES)),
+            )
+        )
+        total = _decimal(stage_total) + _decimal(unstaged)
+    else:
+        total = _decimal(
+            db.scalar(
+                select(func.coalesce(func.sum(Milestone.planned_hours), 0)).where(
+                    Milestone.project_id == project_id
+                )
+            )
+        )
     project = db.get(Project, project_id)
     if project is not None:
         project.current_planned_hours = total

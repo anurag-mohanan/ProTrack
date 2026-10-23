@@ -24,6 +24,7 @@ from app.core.pagination import PaginatedResponse, pagination_query, PaginationP
 from app.api.v1.router_factory import ProjectFilters
 from app.core.exceptions import ProTrackValidationError
 from app.core.uploads import enforce_upload_size
+from app.core.access_control import SPECIAL_REOPEN_PROJECTS
 from app.core.permissions import (
     can_archive_project,
     can_change_project_team,
@@ -32,6 +33,7 @@ from app.core.permissions import (
     can_soft_delete_project,
     can_update_project,
     can_view_deleted_projects,
+    user_holds_special,
 )
 from app.crud.command_center import (
     clone_project,
@@ -224,6 +226,7 @@ def list_projects(
     customer_id: UUID | None = None,
     customer_ids: list[UUID] | None = Query(None),
     customer_contact_id: UUID | None = None,
+    end_customer_id: UUID | None = None,
     design_leader_id: UUID | None = None,
     designer_id: UUID | None = None,
     surfacer_id: UUID | None = None,
@@ -249,6 +252,7 @@ def list_projects(
         customer_id=customer_id,
         customer_ids=customer_ids,
         customer_contact_id=customer_contact_id,
+        end_customer_id=end_customer_id,
         design_leader_id=design_leader_id,
         designer_id=designer_id,
         surfacer_id=surfacer_id,
@@ -318,6 +322,7 @@ def list_deleted_projects(
 def projects_summary(
     customer_id: UUID | None = None,
     customer_ids: list[UUID] | None = Query(None),
+    end_customer_id: UUID | None = None,
     stream_id: UUID | None = None,
     stream_ids: list[UUID] | None = Query(None),
     workstream_ids: list[UUID] | None = Query(None),
@@ -345,6 +350,7 @@ def projects_summary(
     filters = ProjectFilters(
         customer_id=customer_id,
         customer_ids=customer_ids,
+        end_customer_id=end_customer_id,
         stream_id=stream_id,
         stream_ids=stream_ids,
         workstream_ids=workstream_ids,
@@ -795,7 +801,7 @@ def create_project(
             detail="You can only create projects for teams you are authorized to access.",
         )
     try:
-        db_obj = project.create(db, obj_in=obj_in)
+        db_obj = project.create(db, obj_in=obj_in, created_by_id=current_user.id)
         log_activity(
             db,
             user=current_user,
@@ -829,9 +835,20 @@ def update_project(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You cannot move a project onto a team you are not authorized to access.",
         )
+    new_status = payload.get("execution_status")
+    if (
+        db_project.execution_status == ExecutionStatus.completed
+        and new_status is not None
+        and new_status != ExecutionStatus.completed
+        and not user_holds_special(db, current_user, SPECIAL_REOPEN_PROJECTS)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reopening a completed project requires the 'reopen_projects' permission.",
+        )
     old_value = _project_audit_snapshot(db_project, payload)
     try:
-        project.update(db, db_obj=db_project, obj_in=obj_in)
+        project.update(db, db_obj=db_project, obj_in=obj_in, updated_by_id=current_user.id)
         log_activity(
             db,
             user=current_user,

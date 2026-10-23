@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.models.models import Ticket, User
 from app.services import it_account_service, it_asset_service, it_network_service
-from app.services import ticketing_service as tickets
 from app.services.ticketing_service import OPEN_STATUSES
 
 OFFBOARD_TICKET_MARKER = "IT offboard deprovision"
@@ -21,6 +20,16 @@ def _employee_label(user: User) -> str:
 
 
 def find_open_offboard_ticket(db: Session, user_id: UUID) -> Ticket | None:
+    linked = db.scalar(
+        select(Ticket).where(
+            Ticket.source_module == "it_offboarding",
+            Ticket.affected_user_id == user_id,
+            Ticket.status.in_(OPEN_STATUSES),
+        )
+    )
+    if linked is not None:
+        return linked
+    # Legacy offboard tickets predate the explicit link; match the marker text.
     rows = db.scalars(
         select(Ticket).where(
             Ticket.category == "it",
@@ -108,20 +117,23 @@ def ensure_offboard_tasks(
         "Complete each action in IT Operations, then close this ticket."
     )
 
+    from app.services import ticket_workflow_service as workflow
+
     requester = actor if actor is not None else user
-    assignee_id = tickets.category_contact_id(db, "it")
-    ticket = Ticket(
-        ticket_number=tickets.next_ticket_number(db),
+    leaving = user.leaving_date.isoformat() if user.leaving_date else "undated"
+    ticket, _created = workflow.create_ticket(
+        db,
         title=f"{OFFBOARD_TICKET_MARKER} · {label}",
         description=description,
         category="it",
+        subcategory="offboarding.deprovision",
         priority="high",
-        status="open",
+        requester=requester,
+        actor=actor,
+        source_module="it_offboarding",
+        source_record_id=str(user.id),
+        idempotency_key=f"it_offboarding:{user.id}:{leaving}",
+        affected_user_id=user.id,
         due_date=user.leaving_date,
-        requester_id=requester.id,
-        assignee_id=assignee_id,
-        org_department_id=tickets.default_department_id_for_category(db, "it"),
     )
-    db.add(ticket)
-    db.flush()
     return ticket

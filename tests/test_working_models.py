@@ -55,6 +55,7 @@ def test_customer_default_inherited_on_project_create(session, working_models):
         ProjectCreate(
             tool_number=f"WM-{uuid4().hex[:6]}",
             part_description="Working model inheritance test",
+            project_classification="full_design",
             customer_id=customer.id,
         ),
     )

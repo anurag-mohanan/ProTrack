@@ -370,7 +370,6 @@ def hire_with_it(
                 employee_user_id=created.id,
                 joining_date=created.joining_date,
                 designation=created.designation,
-                raise_tickets=False,
             )
             checklist_id = checklist.id
         request = provisioning.create_provisioning_for_user(

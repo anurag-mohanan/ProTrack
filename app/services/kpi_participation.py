@@ -28,10 +28,13 @@ KPI_FLAG_COLUMNS = {
 
 
 def _active_user_clause():
+    from app.core.user_types import employee_user_clause
+
     return (
         User.is_active.is_(True),
         User.is_archived.is_(False),
         User.is_deleted.is_(False),
+        employee_user_clause(),
     )
 
 

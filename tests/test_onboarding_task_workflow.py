@@ -53,7 +53,10 @@ def _status(client, headers, checklist_id, item_id, **payload):
 def test_status_model_transitions_and_reasons(client, session):
     admin = login(client, "admin@prosohm.com")
     body = _create(client, admin)
-    assert {row["status"] for row in body["items"]} == {"not_started"}
+    # Ticket-required tasks start in progress (their ticket is raised); the rest wait.
+    for row in body["items"]:
+        expected = "in_progress" if row["execution_type"] == "TICKET_REQUIRED" else "not_started"
+        assert row["status"] == expected, row["item_text"]
     assert body["resolved_items"] == 0
     assert all(row["due_date"] for row in body["items"])
     cid = body["id"]
@@ -83,10 +86,15 @@ def test_status_model_transitions_and_reasons(client, session):
     assert _item(reopened.json(), "Email ID")["status_reason"] is None
 
     mouse = _item(body, "Teams")
-    done = _status(client, admin, cid, mouse["id"], status="completed", notes="Teams licence set")
-    assert done.status_code == 200
+    # A ticket-required task cannot be ticked off while its ticket is open.
+    assert _status(client, admin, cid, mouse["id"], status="completed").status_code == 422
+    done = _status(
+        client, admin, cid, mouse["id"], status="completed", notes="Teams licence set",
+        override=True, reason="Licence assigned directly in the admin centre.",
+    )
+    assert done.status_code == 200, done.text
     teams = _item(done.json(), "Teams")
-    assert teams["completion_type"] == "manual"
+    assert teams["completion_type"] == "manual_override"
     assert teams["completed_at"] and teams["completed_by_name"]
     na = _status(client, admin, cid, _item(body, "OneDrive")["id"], status="not_required")
     detail = na.json()
@@ -107,7 +115,8 @@ def test_status_model_transitions_and_reasons(client, session):
     assert history.status_code == 200
     events = history.json()
     statuses = [(e["old_status"], e["new_status"]) for e in events if e["event"] == "status_changed"]
-    assert ("not_started", "blocked") in statuses
+    assert ("not_started", "in_progress") in statuses  # ticket raised on create
+    assert ("in_progress", "blocked") in statuses
     assert ("blocked", "waived") in statuses
     assert ("waived", "not_started") in statuses
     assert any(e["reason"] == "Shared mailbox" for e in events)
@@ -142,7 +151,10 @@ def test_errors_and_permissions(client, session):
     assert it_row["can_edit"] is True and it_row["can_waive"] is False
     waive = _status(client, it_user, cid, item["id"], status="waived", reason="Not needed")
     assert waive.status_code == 403
-    ok = _status(client, it_user, cid, item["id"], status="completed")
+    ok = _status(
+        client, it_user, cid, item["id"], status="completed",
+        override=True, reason="Mailbox created before the ticket was picked up.",
+    )
     assert ok.status_code == 200, ok.text
 
 
@@ -192,7 +204,7 @@ def test_request_create_then_ticket_resolution_completes_task(client, session):
     ws = _item(detail, "Workstation")
     assert email["help_ticket_id"] is None and email["can_create_request"] is True
     assert "request_missing" in ws["attention"]
-    assert "request_missing" not in email["attention"]
+    assert "request_missing" in email["attention"]
 
     tickets_before = session.scalar(select(func.count()).select_from(Ticket))
     created = client.post(
@@ -203,7 +215,9 @@ def test_request_create_then_ticket_resolution_completes_task(client, session):
     assert created.status_code == 201, created.text
     row = _item(created.json(), "Email ID")
     assert row["status"] == "in_progress"
-    assert row["help_ticket_number"] and row["request_status"] == "open"
+    # No IT owner is configured in the fixture: the ticket waits in the queue.
+    assert row["help_ticket_number"] and row["request_status"] == "new"
+    assert row["request_needs_owner"] is True
     assert row["can_create_request"] is False
     assert session.scalar(select(func.count()).select_from(Ticket)) == tickets_before + 1
 
@@ -218,7 +232,11 @@ def test_request_create_then_ticket_resolution_completes_task(client, session):
     resolved = client.post(
         f"/api/v1/tickets/{ticket.id}/status",
         headers=admin,
-        json={"status": "resolved", "resolution": "Mailbox created"},
+        json={
+            "status": "resolved",
+            "resolution": "Mailbox created",
+            "work_performed": "Created the M365 mailbox and assigned an E3 licence.",
+        },
     )
     assert resolved.status_code == 200, resolved.text
     after = client.get(f"{BASE}/{cid}", headers=admin).json()
@@ -242,16 +260,21 @@ def test_cancelled_request_blocks_task_instead_of_completing(client, session):
     assert ticket_id
 
     cancelled = client.post(
-        f"/api/v1/tickets/{ticket_id}/status", headers=admin, json={"status": "cancelled"}
+        f"/api/v1/tickets/{ticket_id}/status",
+        headers=admin,
+        json={"status": "cancelled", "reason": "Raised against the wrong domain."},
     )
     assert cancelled.status_code == 200, cancelled.text
     after = client.get(f"{BASE}/{cid}", headers=admin).json()
-    it_rows = [r for r in after["items"] if r["responsibility"] == "it"]
-    assert all(r["status"] == "blocked" for r in it_rows)
-    assert all("cancelled" in (r["status_reason"] or "") for r in it_rows)
-    assert all(r["completion_type"] is None for r in it_rows)
-    assert all("request_cancelled" in r["attention"] for r in it_rows)
-    assert all(r["can_create_request"] for r in it_rows)
+    domain_row = _item(after, "Domain")
+    assert domain_row["status"] == "blocked"
+    assert "cancelled" in (domain_row["status_reason"] or "")
+    assert domain_row["completion_type"] is None
+    assert "request_cancelled" in domain_row["attention"]
+    assert domain_row["can_create_request"] is True
+    # Each task has its own ticket, so the other IT tasks are unaffected.
+    others = [r for r in after["items"] if r["responsibility"] == "it" and r["id"] != domain["id"]]
+    assert others and all(r["status"] == "in_progress" for r in others)
 
     replacement = client.post(f"{BASE}/{cid}/items/{domain['id']}/request", headers=admin, json={})
     assert replacement.status_code == 201, replacement.text
@@ -337,7 +360,10 @@ def test_attention_flags_existing_orphaned_tasks(client, session):
     assert it_dash["onboarding_it_attention"] >= 3
 
     # Reconciling the orphan by completing it directly clears the flag.
-    ok = _status(client, admin, checklist.id, legacy.id, status="completed", notes="Done earlier")
+    ok = _status(
+        client, admin, checklist.id, legacy.id, status="completed", notes="Done earlier",
+        override=True, reason="Mailbox was created before tickets were tracked.",
+    )
     assert ok.status_code == 200, ok.text
     again = client.get(f"{BASE}/attention?responsibility=it", headers=admin).json()
     assert str(legacy.id) not in {row["item_id"] for row in again["items"]}

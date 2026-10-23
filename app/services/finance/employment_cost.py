@@ -48,6 +48,10 @@ def employment_salary_factor(user: User, *, as_of: date) -> Decimal:
 
 def user_counts_for_headcount(user: User, *, as_of: date) -> bool:
     """True if the person still counts as billable/overhead FTE on ``as_of``."""
+    from app.core.user_types import is_virtual_user
+
+    if is_virtual_user(user):
+        return False
     leaving = getattr(user, "leaving_date", None)
     if leaving is not None and leaving < as_of:
         return False

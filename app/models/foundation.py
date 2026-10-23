@@ -52,6 +52,11 @@ class CompanySettings(Base, TimestampMixin, TenantMixin):
     default_working_days: Mapped[str] = mapped_column(
         String(50), nullable=False, default="Mon,Tue,Wed,Thu,Fri"
     )
+    # Provisional-forecast assumption: effort hours one person delivers per
+    # working day on a milestone. Null falls back to default_working_hours_per_day.
+    scheduling_effort_hours_per_day: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(4, 2), nullable=True
+    )
 
 
 class BrandingSettings(Base, TimestampMixin, TenantMixin):

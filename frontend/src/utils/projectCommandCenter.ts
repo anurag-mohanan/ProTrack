@@ -23,6 +23,7 @@ export type ProjectClassificationFilter = 'all' | 'full_design' | 'small_task' |
 export interface ProjectCommandCenterFilters {
   search: string;
   customerIds: string[];
+  endCustomerId: string;
   projectTypeId: string;
   teamIds: string[];
   streamIds: string[];
@@ -51,6 +52,7 @@ export interface ProjectCommandCenterFilters {
 export const defaultProjectCommandCenterFilters: ProjectCommandCenterFilters = {
   search: '',
   customerIds: [],
+  endCustomerId: 'all',
   projectTypeId: 'all',
   teamIds: [],
   streamIds: [],
@@ -301,6 +303,13 @@ export function filterProjectsForCommandCenter(
       return false;
     }
 
+    if (
+      filters.endCustomerId !== 'all' &&
+      (project.end_customer_id ?? '') !== filters.endCustomerId
+    ) {
+      return false;
+    }
+
     if (filters.projectClassification !== 'all') {
       const classification = project.project_classification ?? 'unclassified';
       if (classification !== filters.projectClassification) return false;
@@ -496,6 +505,7 @@ export function countActiveSidebarFilters(filters: ProjectCommandCenterFilters):
   let count = 0;
   if (filters.customerIds.length > 0) count += 1;
   if (filters.projectTypeId !== 'all') count += 1;
+  if (filters.endCustomerId !== 'all') count += 1;
   if (filters.teamIds.length > 0) count += 1;
   if (filters.streamIds.length > 0) count += 1;
   if (filters.projectClassification !== 'all') count += 1;
@@ -628,6 +638,14 @@ export function getProjectActiveFilterChips(
       key: 'project-type',
       label: `Type: ${lookup.projectTypeNameMap.get(filters.projectTypeId) ?? 'Unknown'}`,
       patch: (current) => ({ ...current, projectTypeId: 'all' }),
+    });
+  }
+
+  if (filters.endCustomerId !== 'all') {
+    chips.push({
+      key: 'end-customer',
+      label: `End customer: ${lookup.customerNameMap.get(filters.endCustomerId) ?? 'Unknown'}`,
+      patch: (current) => ({ ...current, endCustomerId: 'all' }),
     });
   }
 

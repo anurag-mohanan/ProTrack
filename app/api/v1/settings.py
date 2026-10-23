@@ -85,6 +85,7 @@ def get_public_settings(db: Session = Depends(get_db)):
             company_short_name=company.company_short_name,
             logo_url=company.logo_url,
             website=company.website,
+            financial_year_start_month=company.financial_year_start_month or 4,
         ),
         branding=PublicBrandingRead.model_validate(branding, from_attributes=True),
     )

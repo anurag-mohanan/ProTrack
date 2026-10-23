@@ -46,10 +46,10 @@ def test_onboarding_assigns_required_trainings_and_blocks_complete(
 
     saw_training_block = False
     for item in body["items"]:
-        if item["status"] == "not_required":
+        if item["status"] in {"not_required", "completed"}:
             continue
-        payload = {"status": "completed"}
-        if item.get("validation_rule"):
+        payload = {"status": "completed", "notes": "Confirmed with the employee."}
+        if item.get("validation_rule") or item["execution_type"] in {"TICKET_REQUIRED", "AUTOMATED"}:
             payload.update({"override": True, "reason": "Assigned outside ProTrack"})
         resp = client.post(
             f"/api/v1/hr/onboarding/{body['id']}/items/{item['id']}/status",

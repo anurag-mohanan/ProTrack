@@ -49,6 +49,7 @@ class ProjectFilters(BaseModel):
     customer_id: UUID | None = None
     customer_ids: list[UUID] | None = None
     customer_contact_id: UUID | None = None
+    end_customer_id: UUID | None = None
     design_leader_id: UUID | None = None
     designer_id: UUID | None = None
     surfacer_id: UUID | None = None

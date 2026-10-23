@@ -207,6 +207,20 @@ export function ProjectFilterPanel({
             }
           />,
         )}
+        {field(
+          <FormSelect
+            label="End Customer"
+            size="small"
+            value={draft.endCustomerId}
+            options={[
+              allOption,
+              ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
+            ]}
+            onChange={(event) =>
+              onDraftChange({ ...draft, endCustomerId: String(event.target.value) })
+            }
+          />,
+        )}
       </FilterGroup>
 
       <FilterGroup title="Team" icon={<GroupsOutlinedIcon sx={{ fontSize: 14 }} />}>

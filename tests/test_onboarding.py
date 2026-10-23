@@ -82,7 +82,11 @@ def test_hr_can_create_and_complete_checklist(client, session):
     assert body["employee_name"] == "Abhay CK"
     assert body["template_code"] == FORM_CODE
     assert body["total_items"] == 24
-    assert body["pending_items"] == 24
+    # The employee-ID task is AUTOMATED and completes because a code was given.
+    assert body["pending_items"] == 23
+    employee_id_item = next(i for i in body["items"] if i["execution_type"] == "AUTOMATED")
+    assert employee_id_item["status"] == "completed"
+    assert employee_id_item["completion_type"] == "automated"
     assert body["status"] == "in_progress"
     assert {item["section"] for item in body["items"]} >= {
         "HUMAN RESOURCES",
@@ -91,7 +95,9 @@ def test_hr_can_create_and_complete_checklist(client, session):
         "IT",
         "ACCOUNTS",
     }
-    assert len(body["triggered_tickets"]) == 4  # hr, admin, it, accounts (not manager)
+    # One ticket per TICKET_REQUIRED task (the five IT tasks), not one per department.
+    assert len(body["triggered_tickets"]) == 5
+    assert {row["category"] for row in body["triggered_tickets"]} == {"it"}
 
     first_item = body["items"][0]
     updated = client.post(
@@ -101,7 +107,7 @@ def test_hr_can_create_and_complete_checklist(client, session):
     )
     assert updated.status_code == 200, updated.text
     updated_body = updated.json()
-    assert updated_body["completed_items"] == 1
+    assert updated_body["completed_items"] == 2  # plus the automated employee-ID task
     assert updated_body["items"][0]["status"] == "completed"
     assert updated_body["items"][0]["completion_date"] is not None
 
@@ -126,16 +132,21 @@ def test_create_assigns_manager_owner_and_raises_tickets(client, session):
     assert all(item["owner_user_id"] == str(manager.id) for item in manager_items)
     assert all(item["help_ticket_id"] is None for item in manager_items)
 
-    ticketed = [item for item in body["items"] if item["responsibility"] != "manager"]
-    assert ticketed
+    ticketed = [item for item in body["items"] if item["execution_type"] == "TICKET_REQUIRED"]
+    assert len(ticketed) == 5
     assert all(item["help_ticket_id"] is not None for item in ticketed)
     assert all(item["help_ticket_number"] for item in ticketed)
+    assert all(item["status"] == "in_progress" for item in ticketed)
+    checklist_only = [item for item in body["items"] if item["execution_type"] == "CHECKLIST_ONLY"]
+    assert checklist_only
+    assert all(item["help_ticket_id"] is None for item in checklist_only)
 
     ticket_ids = {uuid.UUID(item["help_ticket_id"]) for item in ticketed}
-    assert len(ticket_ids) == 4
+    assert len(ticket_ids) == 5
     tickets = session.scalars(select(Ticket).where(Ticket.id.in_(ticket_ids))).all()
-    assert len(tickets) == 4
-    assert {t.category for t in tickets} == {"hr", "admin", "it", "other"}
+    assert len(tickets) == 5
+    assert {t.category for t in tickets} == {"it"}
+    assert all(t.source_module == "onboarding" and t.onboarding_item_id for t in tickets)
 
 
 def test_designer_cannot_create_onboarding(client, session):
@@ -238,10 +249,15 @@ def test_completing_all_items_marks_checklist_complete(client, session):
     assert created.status_code == 201, created.text
     checklist = created.json()
     for item in checklist["items"]:
+        if item["status"] == "completed":
+            continue
+        payload = {"status": "completed", "notes": "Verified with the employee."}
+        if item["execution_type"] in {"TICKET_REQUIRED", "AUTOMATED"}:
+            payload.update(override=True, reason="Completed outside the ticket for this test.")
         response = client.post(
             f"/api/v1/hr/onboarding/{checklist['id']}/items/{item['id']}/status",
             headers=admin,
-            json={"status": "completed"},
+            json=payload,
         )
         assert response.status_code == 200, response.text
     final = client.get(f"/api/v1/hr/onboarding/{checklist['id']}", headers=admin)

@@ -76,7 +76,7 @@ import { ensureArray } from '../../types/pagination';
 import { defaultAnchorForPeriod } from '../../utils/reportPeriodSelection';
 
 const CATEGORY_LABELS: Record<string, string> = {
-  executive: 'Engineering Overview',
+  executive: 'Operational Overview',
   timesheets: 'Timesheet Reports',
   customers: 'Customer Reports',
 };

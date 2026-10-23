@@ -54,6 +54,7 @@ def test_create_project_defaults_stream_to_mold_when_omitted(client, session):
     payload = {
         "tool_number": f"T-{uuid4().hex[:6]}",
         "part_description": "Stream default create",
+        "project_classification": "full_design",
         "customer_id": str(IDS["customer"]),
         "customer_contact_id": str(IDS["contact"]),
         "design_leader_id": str(IDS["user_anurag"]),
@@ -70,6 +71,7 @@ def test_create_project_rejects_unknown_stream(client):
     payload = {
         "tool_number": f"T-{uuid4().hex[:6]}",
         "part_description": "Bad stream",
+        "project_classification": "full_design",
         "customer_id": str(IDS["customer"]),
         "stream_id": str(uuid4()),
         "quoted_hours": "10.00",

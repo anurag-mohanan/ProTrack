@@ -122,6 +122,11 @@ SPECIAL_MANAGE_COMPANY_SETTINGS = "manage_company_settings"
 SPECIAL_MANAGE_PROJECT_SETTINGS = "manage_project_settings"
 SPECIAL_VIEW_REPORTS = "view_reports"
 SPECIAL_VIEW_RESOURCE_PLANNING = "view_resource_planning"
+# --- Engineering management (templates, estimates, baselines) ---
+SPECIAL_MANAGE_PROJECT_TEMPLATES = "manage_project_templates"
+SPECIAL_REVISE_ESTIMATES = "revise_estimates"
+SPECIAL_APPROVE_BASELINES = "approve_baselines"
+SPECIAL_REOPEN_PROJECTS = "reopen_projects"
 # --- Resource Planning shifts (wave 3) ---
 SPECIAL_MANAGE_RESOURCE_SHIFTS = "manage_resource_shifts"
 SPECIAL_ASSIGN_RESOURCE_SHIFTS = "assign_resource_shifts"
@@ -168,6 +173,10 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_MANAGE_PROJECT_SETTINGS,
     SPECIAL_VIEW_REPORTS,
     SPECIAL_VIEW_RESOURCE_PLANNING,
+    SPECIAL_MANAGE_PROJECT_TEMPLATES,
+    SPECIAL_REVISE_ESTIMATES,
+    SPECIAL_APPROVE_BASELINES,
+    SPECIAL_REOPEN_PROJECTS,
     SPECIAL_MANAGE_RESOURCE_SHIFTS,
     SPECIAL_ASSIGN_RESOURCE_SHIFTS,
     SPECIAL_VIEW_SALARY,
@@ -330,6 +339,10 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_VIEW_REPORTS,
             SPECIAL_VIEW_RESOURCE_PLANNING,
             SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+            SPECIAL_MANAGE_PROJECT_TEMPLATES,
+            SPECIAL_REVISE_ESTIMATES,
+            SPECIAL_APPROVE_BASELINES,
+            SPECIAL_REOPEN_PROJECTS,
         }
     ),
     DESIGN_LEADER: frozenset(
@@ -340,6 +353,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_APPROVE_TIMESHEETS,
             SPECIAL_VIEW_REPORTS,
             SPECIAL_EXPORT_REPORTS,
+            SPECIAL_REVISE_ESTIMATES,
         }
     ),
     DESIGNER: frozenset(),
@@ -456,6 +470,10 @@ def resolve_user_special_permissions(user: User, role_name: str) -> list[str]:
             SPECIAL_VIEW_RESOURCE_PLANNING,
             SPECIAL_ASSIGN_RESOURCE_SHIFTS,
             SPECIAL_MANAGE_RESOURCE_SHIFTS,
+            SPECIAL_MANAGE_PROJECT_TEMPLATES,
+            SPECIAL_REVISE_ESTIMATES,
+            SPECIAL_APPROVE_BASELINES,
+            SPECIAL_REOPEN_PROJECTS,
         ):
             if perm in role_defaults:
                 perms.add(perm)

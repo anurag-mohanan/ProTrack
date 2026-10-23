@@ -1,11 +1,15 @@
 """Tests for Phase 5.1 workflow and permissions."""
 
+from datetime import date, timedelta
 from decimal import Decimal
 
 from tests.conftest import IDS, login
 
+# Last week stays inside the editable window whatever day the suite runs.
+WEEK_START = date.today() - timedelta(days=date.today().weekday() + 7)
 
-def _create_draft_timesheet(client, auth_headers, user_id: str, week_start: str = "2026-06-16"):
+
+def _create_draft_timesheet(client, auth_headers, user_id: str, week_start: str = WEEK_START.isoformat()):
     response = client.post(
         "/api/v1/timesheets",
         json={"user_id": user_id, "week_start": week_start},
@@ -23,7 +27,7 @@ def _add_entry(client, auth_headers, timesheet_id: str, project_id: str, hours: 
             "work_category": "productive",
             "project_id": project_id,
             "task_type_id": client.task_type_id,
-            "entry_date": "2026-06-17",
+            "entry_date": (WEEK_START + timedelta(days=1)).isoformat(),
             "hours": hours,
         },
         headers=auth_headers,

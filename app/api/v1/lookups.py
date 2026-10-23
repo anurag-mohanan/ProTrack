@@ -188,6 +188,32 @@ def list_lookup_project_types(
     ).all()
 
 
+@router.get("/project-templates")
+def list_lookup_project_templates(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """One entry per template family (active version, else newest) for filter dropdowns."""
+    from app.models.models import ProjectTemplate
+
+    families: dict[UUID, ProjectTemplate] = {}
+    for row in db.scalars(select(ProjectTemplate)).all():
+        family = row.template_family_id or row.id
+        current = families.get(family)
+        if current is None or (row.is_active, row.version) > (current.is_active, current.version):
+            families[family] = row
+    return [
+        {
+            "id": str(row.id),
+            "template_family_id": str(row.template_family_id or row.id),
+            "name": row.name,
+            "version": row.version,
+            "is_active": row.is_active,
+        }
+        for row in sorted(families.values(), key=lambda item: item.name.lower())
+    ]
+
+
 @router.get("/project-small-task-types", response_model=list[ProjectSmallTaskTypeRead])
 def list_lookup_project_small_task_types(
     db: Session = Depends(get_db),

@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.user_types import employee_user_clause
 from app.models.models import Timesheet, TimesheetEntry, User
 from app.schemas.dashboard import MissingTimesheetRow
 from app.services.holiday_service import load_holiday_dates
@@ -55,6 +56,7 @@ def get_missing_timesheet_rows(
         select(User)
         .where(
             User.requires_timesheet.is_(True),
+            employee_user_clause(),
             User.is_active.is_(True),
             User.is_archived.is_(False),
             User.is_deleted.is_(False),

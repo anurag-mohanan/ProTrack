@@ -996,6 +996,11 @@ def employee_block(db: Session, user_id: UUID | None) -> str | None:
     if not user.is_active or user.is_archived:
         name = f"{user.first_name} {user.last_name}".strip() or user.email
         return f"{name} is inactive — resources can only be assigned to active employees."
+    from app.core.user_types import VIRTUAL_USER_EXCLUDED_MESSAGE, is_virtual_user
+
+    if is_virtual_user(user):
+        name = f"{user.first_name} {user.last_name}".strip() or user.email
+        return VIRTUAL_USER_EXCLUDED_MESSAGE.format(name=name, purpose="IT resource allocation")
     return None
 
 

@@ -25,6 +25,8 @@ import { TeamReportsPanel } from '../components/reports/TeamReportsPanel';
 import { EngineeringReportingSuite } from '../components/reports/EngineeringReportingSuite';
 import { EngineeringDataQualityPanel } from '../components/reports/EngineeringDataQualityPanel';
 import { EngineeringPerformancePanel } from '../components/reports/EngineeringPerformancePanel';
+import { QuoteToDeliveryPanel } from '../components/reports/QuoteToDeliveryPanel';
+import { ControlTowerPanel } from '../components/reports/ControlTowerPanel';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
 import { DesignerTeamTimesheetPanel } from '../components/reports/DesignerTeamTimesheetPanel';
 import { useAuth } from '../context/AuthContext';
@@ -46,6 +48,8 @@ import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
  */
 const TAB_CONFIG = [
   { label: 'Engineering Performance', slug: 'engineering-performance' },
+  { label: 'Quote-to-Delivery', slug: 'quote-to-delivery' },
+  { label: 'Control Tower', slug: 'control-tower' },
   { label: 'Timesheet Reports', slug: 'timesheet-reports' },
   { label: 'Operational Overview', slug: 'engineering-suite' },
   { label: 'Project Hours', slug: 'project-hours' },
@@ -122,6 +126,8 @@ export function ReportsPage() {
 
   const activeSlug: TabSlug = TAB_CONFIG[tab]?.slug ?? TAB_CONFIG[0].slug;
   const performanceEnabled = activeSlug === 'engineering-performance';
+  const quoteToDeliveryEnabled = activeSlug === 'quote-to-delivery';
+  const controlTowerEnabled = activeSlug === 'control-tower';
   const timesheetReportsEnabled = activeSlug === 'timesheet-reports';
   const suiteEnabled = activeSlug === 'engineering-suite';
   const projectHoursEnabled = activeSlug === 'project-hours';
@@ -195,7 +201,7 @@ export function ReportsPage() {
     <PageContainer>
       <ModernPageHeader
         title="Reports"
-        subtitle="Engineering performance, timesheets, operational overview, project hours, teams, and customer packs"
+        subtitle="Engineering performance, quote-to-delivery, control tower, timesheets, operational overview, project hours, teams, and customer packs"
       />
 
       <FilterToolbar
@@ -221,6 +227,12 @@ export function ReportsPage() {
       {performanceEnabled ? (
         <EngineeringPerformancePanel canExport={canExport} includeArchived={appliedIncludeArchived} />
       ) : null}
+
+      {quoteToDeliveryEnabled ? (
+        <QuoteToDeliveryPanel canExport={canExport} includeArchived={appliedIncludeArchived} />
+      ) : null}
+
+      {controlTowerEnabled ? <ControlTowerPanel /> : null}
 
       {timesheetReportsEnabled ? (
         <DesignerTeamTimesheetPanel

@@ -18,6 +18,7 @@ logger = logging.getLogger("protrack.jobs")
 JOB_PROCESS_EMAIL_QUEUE = "process_email_queue"
 JOB_HISTORICAL_IMPORT = "historical_import"
 JOB_TIMESHEET_IMPORT = "timesheet_import"
+JOB_CONTROL_TOWER_EVALUATION = "control_tower_evaluation"
 
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
@@ -139,6 +140,17 @@ def _execute(db: Session, row: BackgroundJob) -> None:
             context=context,
             imported_by_id=_UUID(str(payload["imported_by_id"])),
         )
+        return
+    if row.job_type == JOB_CONTROL_TOWER_EVALUATION:
+        from app.services.control_tower_service import (
+            EvaluationInProgress,
+            run_evaluation,
+        )
+
+        try:
+            run_evaluation(db, trigger="job")
+        except EvaluationInProgress:
+            logger.info("Control Tower evaluation already running; job skipped")
         return
     raise ValueError(f"Unknown job type: {row.job_type}")
 

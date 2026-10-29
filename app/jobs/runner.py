@@ -3,6 +3,7 @@
 Usage:
   python -m app.jobs.runner --once
   python -m app.jobs.runner --loop --sleep 5 --limit 20
+  python -m app.jobs.runner --control-tower   # queue one Control Tower evaluation, then --once
 """
 
 from __future__ import annotations
@@ -24,10 +25,22 @@ def main() -> None:
     parser.add_argument("--loop", action="store_true", help="Process forever")
     parser.add_argument("--limit", type=int, default=20, help="Max jobs per cycle")
     parser.add_argument("--sleep", type=float, default=5.0, help="Seconds between loop cycles")
+    parser.add_argument(
+        "--control-tower",
+        action="store_true",
+        help="Queue one Control Tower evaluation before processing (for a daily scheduled task)",
+    )
     args = parser.parse_args()
 
     if not args.once and not args.loop:
         args.once = True
+
+    if args.control_tower:
+        db = SessionLocal()
+        try:
+            job_queue.enqueue_job(db, job_type=job_queue.JOB_CONTROL_TOWER_EVALUATION, max_attempts=1)
+        finally:
+            db.close()
 
     while True:
         db = SessionLocal()

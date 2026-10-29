@@ -24,11 +24,18 @@ export async function fetchEngineeringPerformance(
 export async function downloadEngineeringPerformanceExcel(
   params: EngineeringPerformanceParams,
 ): Promise<void> {
-  const token = getAccessToken();
-  const response = await fetch(
-    `${API_BASE_URL}/reports/engineering-performance/export.xlsx${performanceQuery(params)}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  await downloadReportExcel(
+    `/reports/engineering-performance/export.xlsx${performanceQuery(params)}`,
+    'Engineering_Performance.xlsx',
   );
+}
+
+/** GET an authenticated .xlsx export and save it; throws with the API's error detail. */
+export async function downloadReportExcel(pathWithQuery: string, fallbackFilename: string): Promise<void> {
+  const token = getAccessToken();
+  const response = await fetch(`${API_BASE_URL}${pathWithQuery}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!response.ok) {
     let detail = `Export failed (HTTP ${response.status}).`;
     try {
@@ -42,7 +49,7 @@ export async function downloadEngineeringPerformanceExcel(
   const blob = await response.blob();
   const disposition = response.headers.get('Content-Disposition') ?? '';
   const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? 'Engineering_Performance.xlsx';
+  const filename = match?.[1] ?? fallbackFilename;
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

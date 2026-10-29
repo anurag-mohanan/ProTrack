@@ -37,6 +37,11 @@ from app.schemas.command_center import (
     TimelineStep,
 )
 from app.schemas.timesheet import TimesheetEntryRead
+from app.services.delivery_variance_service import (
+    is_milestone_overdue,
+    milestone_current_target,
+    project_current_target,
+)
 from app.services.project_calculation_service import calculate_hours, get_milestone_summary
 from app.services.project_contributor_service import get_project_contributors
 from app.services.working_model.engine import WorkingModelEngine
@@ -296,10 +301,11 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
     engine = WorkingModelEngine(db)
     allowed_risks = engine.applicable_risk_types(project)
 
+    project_target = project_current_target(project)
     if (
         ProjectRiskType.overdue in allowed_risks
-        and project.due_date is not None
-        and project.due_date < today
+        and project_target is not None
+        and project_target < today
         and project.execution_status
         not in (
             ExecutionStatus.completed,
@@ -311,7 +317,7 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
                 risk_type=ProjectRiskType.overdue,
                 severity="critical",
                 title="Project overdue",
-                detail=f"Due date was {project.due_date.isoformat()}",
+                detail=f"Due date was {project_target.isoformat()}",
             )
         )
 
@@ -330,17 +336,13 @@ def _detect_risks(db: Session, project: Project, milestones: list[Milestone], ho
 
     if ProjectRiskType.milestone_delay in allowed_risks:
         for milestone in milestones:
-            if (
-                milestone.due_date is not None
-                and milestone.due_date < today
-                and milestone.status != MilestoneStatus.completed
-            ):
+            if is_milestone_overdue(milestone, today):
                 risks.append(
                     ProjectRiskItem(
                         risk_type=ProjectRiskType.milestone_delay,
                         severity="high",
                         title=f"Delayed milestone: {milestone.name}",
-                        detail=f"Due {milestone.due_date.isoformat()}",
+                        detail=f"Due {milestone_current_target(milestone).isoformat()}",
                     )
                 )
 

@@ -55,6 +55,46 @@ def resolve_working_model_for_project(
     return get_default_working_model(db)
 
 
+def resolve_working_models_for_projects(
+    db: Session, projects: list[Project]
+) -> dict[UUID, WorkingModel | None]:
+    """Same precedence as ``resolve_working_model_for_project`` in two queries for any number of projects."""
+    if not projects:
+        return {}
+    models = {model.id: model for model in db.scalars(select(WorkingModel))}
+    customer_ids = {project.customer_id for project in projects if project.customer_id}
+    customer_defaults = (
+        dict(
+            db.execute(
+                select(Customer.id, Customer.default_working_model_id).where(
+                    Customer.id.in_(customer_ids)
+                )
+            ).all()
+        )
+        if customer_ids
+        else {}
+    )
+    defaults = sorted(
+        (
+            model
+            for model in models.values()
+            if model.code == WorkingModelCode.project_based.value
+            and model.is_active
+            and not model.is_archived
+        ),
+        key=lambda model: model.sort_order or 0,
+    )
+    fallback = defaults[0] if defaults else None
+    result: dict[UUID, WorkingModel | None] = {}
+    for project in projects:
+        model = models.get(project.working_model_id) if project.working_model_id else None
+        if model is None:
+            customer_default = customer_defaults.get(project.customer_id)
+            model = models.get(customer_default) if customer_default else None
+        result[project.id] = model or fallback
+    return result
+
+
 def resolve_working_model_for_user(db: Session, user: User) -> WorkingModel | None:
     """Return the user's explicit default only — never invent a fallback.
 

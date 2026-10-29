@@ -135,6 +135,26 @@ def project_completion_date(project: Project) -> date | None:
     return project.completed_at.date() if project.completed_at else None
 
 
+def project_current_target(project: Project) -> date | None:
+    return project.due_date or project.baseline_completion_date
+
+
+def milestone_current_target(milestone: Milestone) -> date | None:
+    return milestone.due_date or milestone.baseline_finish_date
+
+
+def is_milestone_skipped(milestone: Milestone) -> bool:
+    return milestone.status in _SKIPPED_MILESTONES
+
+
+def is_milestone_overdue(milestone: Milestone, today: date) -> bool:
+    """Open (not completed, cancelled or not applicable) and past its current target."""
+    if is_milestone_skipped(milestone) or milestone.status == MilestoneStatus.completed:
+        return False
+    target = milestone_current_target(milestone)
+    return target is not None and today > target
+
+
 def _classify(
     *,
     skipped: bool,
@@ -174,7 +194,7 @@ def project_reference(project: Project, history: BaselineHistory) -> tuple[date 
 
 def project_delivery(project: Project, history: BaselineHistory, today: date) -> ProjectDelivery:
     reference, source = project_reference(project, history)
-    current_target = project.due_date or project.baseline_completion_date
+    current_target = project_current_target(project)
     actual = project_completion_date(project)
     completed = project.execution_status == ExecutionStatus.completed
     status, variance, overdue = _classify(
@@ -220,10 +240,10 @@ def milestone_delivery(milestone: Milestone, history: BaselineHistory, today: da
     else:
         source = "none"
     reference = original if original is not None else milestone.due_date
-    current_target = milestone.due_date or milestone.baseline_finish_date
+    current_target = milestone_current_target(milestone)
     actual = milestone_completion_date(milestone)
     status, variance, overdue = _classify(
-        skipped=milestone.status in _SKIPPED_MILESTONES,
+        skipped=is_milestone_skipped(milestone),
         completed=milestone.status == MilestoneStatus.completed,
         actual=actual,
         reference=reference,

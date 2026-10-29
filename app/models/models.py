@@ -2400,6 +2400,11 @@ from app.models.intelligence import (  # noqa: E402, F401
     ProjectDecision,
     ProjectKnowledgeRecord,
 )
+from app.models.control_tower import (  # noqa: E402, F401
+    ProjectRiskEvaluationRun,
+    ProjectRiskFinding,
+    ProjectRiskFindingEvent,
+)
 from app.models.enterprise import (  # noqa: E402, F401
     DocumentAsset,
     LearningPlan,

@@ -51,6 +51,13 @@ class PerformanceSummary(BaseModel):
     milestones_completed: int
     milestones_on_time: int
     milestone_on_time_rate: float | None = None
+    delivery_evaluable_projects: int = 0
+    delivered_early: int = 0
+    delivered_on_reference_date: int = 0
+    delivered_late: int = 0
+    average_delivery_variance_days: float | None = None
+    median_delivery_variance_days: float | None = None
+    delivery_reference_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class StagePerformanceRow(BaseModel):
@@ -62,6 +69,12 @@ class StagePerformanceRow(BaseModel):
     actual_hours: float
     variance_hours: float
     variance_percent: float | None = None
+    eligible_projects: int = 0
+    average_variance_hours: float | None = None
+    median_variance_hours: float | None = None
+    projects_over_estimate: int = 0
+    percent_over_estimate: float | None = None
+    actual_share_percent: float | None = None
 
 
 class StagePerformance(BaseModel):
@@ -69,6 +82,17 @@ class StagePerformance(BaseModel):
     projects_without_stage_plan: int
     rows: list[StagePerformanceRow] = Field(default_factory=list)
     unstaged_actual_hours: float = 0.0
+    complete_attribution_projects: int = 0
+    partial_attribution_projects: int = 0
+    unattributed_projects: int = 0
+    eligibility_rule: str = ""
+
+
+class EffortClassificationRow(BaseModel):
+    key: str
+    label: str
+    hours: float
+    percent: float | None = None
 
 
 class BreakdownRow(BaseModel):
@@ -120,6 +144,13 @@ class ProjectPerformanceRow(BaseModel):
     milestones_total: int
     milestones_completed: int
     milestones_on_time: int
+    original_baseline_completion_date: date | None = None
+    current_baseline_completion_date: date | None = None
+    delivery_reference_source: str = "none"
+    delivery_reference_date: date | None = None
+    delivery_status: str | None = None
+    delivery_variance_days: int | None = None
+    stage_attribution_status: str = "unavailable"
 
 
 class PerformanceDataWarning(BaseModel):
@@ -133,6 +164,7 @@ class EngineeringPerformanceReport(BaseModel):
     filters: dict[str, str | None] = Field(default_factory=dict)
     summary: PerformanceSummary
     stage_performance: StagePerformance
+    effort_by_classification: list[EffortClassificationRow] = Field(default_factory=list)
     breakdowns: list[Breakdown] = Field(default_factory=list)
     projects: list[ProjectPerformanceRow] = Field(default_factory=list)
     warnings: list[PerformanceDataWarning] = Field(default_factory=list)

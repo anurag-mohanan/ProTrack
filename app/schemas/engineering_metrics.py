@@ -50,23 +50,108 @@ class ActualHoursMetrics(BaseModel):
 
 
 class StageHoursRow(BaseModel):
+    """One engineering stage that exists in this project's plan.
+
+    ``actual_hours`` is null when stage hours cannot be determined (no timesheet
+    entry is linked to a staged milestone, or the project's actual hours are
+    missing). ``variance_hours`` mirrors ``variance.value`` for older clients.
+    """
+
     key: str
     label: str
+    has_approved_estimate: bool = False
     original_estimate_hours: Decimal | None = None
     current_estimate_hours: Decimal | None = None
-    actual_hours: Decimal
+    actual_hours: Decimal | None = None
+    percent_of_project_actual: Decimal | None = None
     variance_hours: Decimal | None = None
+    variance: MetricValue = Field(default_factory=lambda: MetricValue(status="unavailable"))
+    utilization_percent: MetricValue = Field(
+        default_factory=lambda: MetricValue(status="unavailable")
+    )
+    remaining_hours: MetricValue = Field(default_factory=lambda: MetricValue(status="unavailable"))
+    data_quality: Literal["complete", "limited", "unavailable"] = "unavailable"
+    data_quality_notes: list[str] = Field(default_factory=list)
 
 
 class StageAttributionMetrics(BaseModel):
+    """Stage rows plus unattributed hours reconcile to ``total_hours``.
+
+    ``attributed_hours`` covers every stage row (including stages without an
+    approved estimate, such as Feasibility); ``other_stage_hours`` is the part of
+    it on stages outside Blockout / Intermediate Design / Final Design.
+    """
+
     status: Literal["complete", "partial", "unavailable", "no_hours"]
     coverage_percent: Decimal | None = None
+    total_hours: Decimal | None = None
     attributed_hours: Decimal = Decimal("0")
+    unattributed_hours: Decimal = Decimal("0")
     other_stage_hours: Decimal = Decimal("0")
     no_stage_hours: Decimal = Decimal("0")
     no_milestone_hours: Decimal = Decimal("0")
     invalid_milestone_hours: Decimal = Decimal("0")
+    source: str = ""
     rows: list[StageHoursRow] = Field(default_factory=list)
+
+
+DeliveryStatus = Literal[
+    "early",
+    "on_time",
+    "late",
+    "overdue",
+    "not_due",
+    "no_target",
+    "completion_date_missing",
+    "not_applicable",
+]
+DeliveryReference = Literal["original_baseline", "baseline_unverified", "current_due_date", "none"]
+
+
+class ProjectDelivery(BaseModel):
+    """Project delivery dates and variance. Variance days = actual − reference (positive = late)."""
+
+    status: DeliveryStatus
+    reference_source: DeliveryReference
+    reference_label: str
+    reference_date: date | None = None
+    original_baseline_completion_date: date | None = None
+    current_baseline_completion_date: date | None = None
+    current_due_date: date | None = None
+    current_target_date: date | None = None
+    actual_completion_date: date | None = None
+    schedule_variance_days: int | None = None
+    current_target_variance_days: int | None = None
+    days_overdue: int | None = None
+    target_moved_days: int | None = None
+    baseline_revision_count: int = 0
+    original_due_date_preserved: bool = False
+
+
+class MilestoneDelivery(BaseModel):
+    milestone_id: UUID
+    name: str
+    stage: str | None = None
+    stage_label: str | None = None
+    milestone_status: str
+    is_required: bool = True
+    original_baseline_finish_date: date | None = None
+    current_baseline_finish_date: date | None = None
+    current_due_date: date | None = None
+    current_target_date: date | None = None
+    actual_completion_date: date | None = None
+    reference_date: date | None = None
+    reference_source: DeliveryReference
+    status: DeliveryStatus
+    schedule_variance_days: int | None = None
+    days_overdue: int | None = None
+
+
+class DeliveryMetrics(BaseModel):
+    sign_convention: str
+    project: ProjectDelivery
+    milestones: list[MilestoneDelivery] = Field(default_factory=list)
+    milestone_status_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class MilestoneReadiness(BaseModel):
@@ -112,6 +197,7 @@ class ProjectEngineeringMetrics(BaseModel):
     original_variance_hours: MetricValue
     stage_attribution: StageAttributionMetrics
     milestones: MilestoneReadiness
+    delivery: DeliveryMetrics
     quote_linkage: QuoteLinkage
     issues: list[DataQualityIssue] = Field(default_factory=list)
     definitions: list[KpiDefinition] = Field(default_factory=list)

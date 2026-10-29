@@ -13,13 +13,14 @@ period; they are listed as a data-quality warning instead.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from statistics import median
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
@@ -28,6 +29,7 @@ from app.models.enums import (
     ExecutionStatus,
     MilestoneStatus,
     ProjectStage,
+    TaskTypeFunctionCategory,
 )
 from app.models.foundation import CompanySettings
 from app.models.models import (
@@ -36,12 +38,15 @@ from app.models.models import (
     Project,
     ProjectTemplate,
     ProjectType,
+    TaskType,
     Team,
+    TimesheetEntry,
     User,
 )
 from app.schemas.engineering_performance import (
     Breakdown,
     BreakdownRow,
+    EffortClassificationRow,
     EngineeringPerformanceReport,
     KpiDefinition,
     PerformanceDataWarning,
@@ -51,9 +56,17 @@ from app.schemas.engineering_performance import (
     StagePerformance,
     StagePerformanceRow,
 )
+from app.schemas.engineering_metrics import ProjectDelivery
+from app.services.delivery_variance_service import (
+    BaselineHistory,
+    baseline_histories,
+    project_delivery,
+)
 from app.services.engineering_metrics_service import (
     StageHourBuckets,
+    project_plan_stages,
     resolve_estimate,
+    stage_attribution_status,
     stage_estimates_by_project,
     stage_hour_buckets,
 )
@@ -118,9 +131,42 @@ DEFINITIONS = [
         key="on_time_rate",
         label="On-time delivery",
         definition=(
-            "A project is on time when its actual completion date is on or before its baseline "
-            "completion date. Projects created before baselines existed use their due date "
-            "(shown as 'legacy due date'). Projects with neither are excluded from the rate."
+            "A project is on time when its actual completion date is on or before its current "
+            "baseline completion date (the latest approved baseline, after any re-baselining). "
+            "Projects created before baselines existed use their due date (shown as 'legacy due "
+            "date'). Projects with neither are excluded from the rate. See 'Delivery variance' "
+            "for the comparison against the original approved baseline."
+        ),
+    ),
+    KpiDefinition(
+        key="delivery_variance",
+        label="Delivery variance (days)",
+        definition=(
+            "Actual completion date minus the original approved baseline completion date, in "
+            "calendar days: negative is early, 0 is on the reference date, positive is late. "
+            "Re-baselining never replaces the original. Without baseline revision history the "
+            "stored baseline is used ('baseline without revision history'); without any "
+            "baseline the current due date is used. The reference used is counted in the "
+            "summary and shown per project. Projects with no reference date are excluded."
+        ),
+    ),
+    KpiDefinition(
+        key="stage_comparison",
+        label="Stage estimate comparison",
+        definition=(
+            "Per stage, across eligible projects: average and median of (stage actual − "
+            "approved stage estimate) and the share of projects over their estimate. A project "
+            "is eligible for a stage only when it has an approved estimate for that stage and "
+            "every one of its timesheet hours is attributed to a stage. Projects with "
+            "unattributed hours are counted separately and never treated as zero."
+        ),
+    ),
+    KpiDefinition(
+        key="effort_by_classification",
+        label="Effort by classification",
+        definition=(
+            "Actual hours of the listed projects split by the task type's function category; "
+            "entries without a task type are shown as 'No task type'. Rows sum to actual hours."
         ),
     ),
     KpiDefinition(
@@ -142,6 +188,13 @@ DEFINITIONS = [
         ),
     ),
 ]
+
+
+STAGE_ELIGIBILITY_RULE = (
+    "Stage comparisons use only projects with an approved estimate for the stage and all "
+    "timesheet hours attributed to a stage. Totals above include every project with a stage "
+    "plan, so partially attributed projects understate stage actuals there."
+)
 
 
 @dataclass
@@ -181,6 +234,8 @@ class _ProjectFacts:
     milestones_completed: int = 0
     milestones_on_time: int = 0
     milestones_dated: int = 0
+    stage_status: str = "unavailable"
+    delivery: ProjectDelivery | None = None
 
     @property
     def stage_planned(self) -> bool:
@@ -275,6 +330,49 @@ def _apply_filters(stmt, filters: PerformanceFilters):
     return stmt
 
 
+CLASSIFICATION_LABELS = {
+    TaskTypeFunctionCategory.engineering: "Engineering",
+    TaskTypeFunctionCategory.management: "Management",
+    TaskTypeFunctionCategory.administration: "Administration",
+    TaskTypeFunctionCategory.non_productive: "Non-productive",
+}
+
+
+def _effort_by_classification(db: Session, project_ids: list[UUID]) -> list[EffortClassificationRow]:
+    """Actual hours by task-type function category; rows sum to report actual hours."""
+    if not project_ids:
+        return []
+    rows = db.execute(
+        select(TaskType.function_category, func.coalesce(func.sum(TimesheetEntry.hours), 0))
+        .select_from(TimesheetEntry)
+        .outerjoin(TaskType, TaskType.id == TimesheetEntry.task_type_id)
+        .where(TimesheetEntry.project_id.in_(project_ids), TimesheetEntry.is_deleted.is_(False))
+        .group_by(TaskType.function_category)
+    ).all()
+    hours = {category: Decimal(str(value or 0)) for category, value in rows}
+    total = sum(hours.values(), Decimal("0"))
+    result = [
+        EffortClassificationRow(
+            key=category.value,
+            label=label,
+            hours=_f(hours[category]) or 0.0,
+            percent=_pct(hours[category], total),
+        )
+        for category, label in CLASSIFICATION_LABELS.items()
+        if hours.get(category, Decimal("0")) > 0
+    ]
+    if hours.get(None, Decimal("0")) > 0:
+        result.append(
+            EffortClassificationRow(
+                key="unclassified",
+                label="No task type",
+                hours=_f(hours[None]) or 0.0,
+                percent=_pct(hours[None], total),
+            )
+        )
+    return result
+
+
 def _milestones(db: Session, project_ids: list[UUID]) -> dict[UUID, list[Milestone]]:
     result: dict[UUID, list[Milestone]] = defaultdict(list)
     if not project_ids:
@@ -290,13 +388,20 @@ def _build_facts(db: Session, projects: list[Project]) -> list[_ProjectFacts]:
     estimates = stage_estimates_by_project(db, ids)
     buckets = stage_hour_buckets(db, ids)
     milestones = _milestones(db, ids)
+    histories = baseline_histories(db, ids)
+    today = date.today()
     facts: list[_ProjectFacts] = []
     for project in projects:
         milestone_rows = milestones.get(project.id, [])
-        estimate = resolve_estimate(project, estimates.get(project.id, []), milestone_rows)
+        estimate_rows = estimates.get(project.id, [])
+        estimate = resolve_estimate(project, estimate_rows, milestone_rows)
         bucket = buckets.get(project.id, StageHourBuckets())
         stage_actual = dict(bucket.stages)
         unstaged = bucket.unattributed
+        stage_status = stage_attribution_status(
+            bucket, project_plan_stages(estimate_rows, milestone_rows, bucket)
+        )
+        delivery = project_delivery(project, histories.get(project.id, BaselineHistory()), today)
 
         if project.baseline_completion_date is not None:
             reference, reference_source = project.baseline_completion_date, "baseline"
@@ -336,6 +441,8 @@ def _build_facts(db: Session, projects: list[Project]) -> list[_ProjectFacts]:
                 milestones_completed=len(completed),
                 milestones_on_time=on_time,
                 milestones_dated=dated,
+                stage_status=stage_status,
+                delivery=delivery,
             )
         )
     return facts
@@ -544,6 +651,11 @@ def build_engineering_performance(
     late_items = [item for item in evaluable if not item.on_time]
     milestones_dated = sum(item.milestones_dated for item in facts)
     milestones_on_time = sum(item.milestones_on_time for item in facts)
+    deliveries = [item.delivery for item in facts if item.delivery is not None]
+    delivery_days = [
+        d.schedule_variance_days for d in deliveries if d.schedule_variance_days is not None
+    ]
+    delivery_statuses = Counter(d.status for d in deliveries)
 
     summary = PerformanceSummary(
         projects_completed=len(facts),
@@ -567,9 +679,20 @@ def build_engineering_performance(
         milestones_completed=sum(item.milestones_completed for item in facts),
         milestones_on_time=milestones_on_time,
         milestone_on_time_rate=_rate(milestones_on_time, milestones_dated),
+        delivery_evaluable_projects=len(delivery_days),
+        delivered_early=delivery_statuses.get("early", 0),
+        delivered_on_reference_date=delivery_statuses.get("on_time", 0),
+        delivered_late=delivery_statuses.get("late", 0),
+        average_delivery_variance_days=round(sum(delivery_days) / len(delivery_days), 1)
+        if delivery_days
+        else None,
+        median_delivery_variance_days=float(median(delivery_days)) if delivery_days else None,
+        delivery_reference_counts=dict(Counter(d.reference_source for d in deliveries)),
     )
 
     staged = [item for item in facts if item.stage_planned]
+    complete = [item for item in staged if item.stage_status == "complete"]
+    complete_actual = sum((item.actual for item in complete), Decimal("0"))
     stage_rows = []
     for stage in PLANNED_STAGES:
         original = sum((item.stage_original.get(stage, Decimal("0")) for item in staged), Decimal("0"))
@@ -577,6 +700,13 @@ def build_engineering_performance(
         actual = sum((item.stage_actual.get(stage, Decimal("0")) for item in staged), Decimal("0"))
         reference = original if basis == "original" else current
         variance = actual - reference
+        estimates_for_stage = [
+            (item, (item.stage_original if basis == "original" else item.stage_current)[stage])
+            for item in complete
+            if stage in (item.stage_original if basis == "original" else item.stage_current)
+        ]
+        variances = [item.stage_actual.get(stage, Decimal("0")) - est for item, est in estimates_for_stage]
+        over = sum(1 for value in variances if value > 0)
         stage_rows.append(
             StagePerformanceRow(
                 stage=stage.value,
@@ -587,6 +717,17 @@ def build_engineering_performance(
                 actual_hours=_f(actual) or 0.0,
                 variance_hours=_f(variance) or 0.0,
                 variance_percent=_pct(variance, reference),
+                eligible_projects=len(variances),
+                average_variance_hours=_f(sum(variances, Decimal("0")) / len(variances))
+                if variances
+                else None,
+                median_variance_hours=_f(median(variances)) if variances else None,
+                projects_over_estimate=over,
+                percent_over_estimate=_rate(over, len(variances)),
+                actual_share_percent=_pct(
+                    sum((item.stage_actual.get(stage, Decimal("0")) for item in complete), Decimal("0")),
+                    complete_actual,
+                ),
             )
         )
     stage_performance = StagePerformance(
@@ -594,6 +735,12 @@ def build_engineering_performance(
         projects_without_stage_plan=len(facts) - len(staged),
         rows=stage_rows,
         unstaged_actual_hours=_f(sum((item.unstaged_actual for item in staged), Decimal("0"))) or 0.0,
+        complete_attribution_projects=len(complete),
+        partial_attribution_projects=sum(1 for item in staged if item.stage_status == "partial"),
+        unattributed_projects=sum(
+            1 for item in staged if item.stage_status in {"unavailable", "no_hours"}
+        ),
+        eligibility_rule=STAGE_ELIGIBILITY_RULE,
     )
 
     project_rows = []
@@ -601,6 +748,7 @@ def build_engineering_performance(
         project = item.project
         planned = item.planned(basis)
         variance = (item.actual - planned) if planned is not None else None
+        delivery = item.delivery
         project_rows.append(
             ProjectPerformanceRow(
                 project_id=project.id,
@@ -641,6 +789,15 @@ def build_engineering_performance(
                 milestones_total=item.milestones_total,
                 milestones_completed=item.milestones_completed,
                 milestones_on_time=item.milestones_on_time,
+                original_baseline_completion_date=delivery.original_baseline_completion_date
+                if delivery
+                else None,
+                current_baseline_completion_date=project.baseline_completion_date,
+                delivery_reference_source=delivery.reference_source if delivery else "none",
+                delivery_reference_date=delivery.reference_date if delivery else None,
+                delivery_status=delivery.status if delivery else None,
+                delivery_variance_days=delivery.schedule_variance_days if delivery else None,
+                stage_attribution_status=item.stage_status,
             )
         )
 
@@ -655,6 +812,7 @@ def build_engineering_performance(
         filters=filter_labels or {},
         summary=summary,
         stage_performance=stage_performance,
+        effort_by_classification=_effort_by_classification(db, [item.project.id for item in facts]),
         breakdowns=_breakdowns(
             facts, basis=basis, names=names, period_type=filters.period_type, start=start, end=end
         ),

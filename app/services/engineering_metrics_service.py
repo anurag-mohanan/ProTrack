@@ -30,7 +30,6 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
-    PLANNED_STAGE_LABELS,
     PLANNED_STAGES,
     ExecutionStatus,
     MilestoneStatus,
@@ -41,7 +40,6 @@ from app.models.finance import Quote, QuoteRevision
 from app.models.models import (
     Milestone,
     Project,
-    ProjectBaselineRevision,
     ProjectEstimateRevision,
     ProjectStageEstimate,
     Timesheet,
@@ -50,6 +48,7 @@ from app.models.models import (
 from app.schemas.engineering_metrics import (
     ActualHoursMetrics,
     DataQualityIssue,
+    DeliveryMetrics,
     EstimateMetrics,
     MetricValue,
     MilestoneReadiness,
@@ -59,7 +58,13 @@ from app.schemas.engineering_metrics import (
     StageHoursRow,
 )
 from app.schemas.engineering_performance import KpiDefinition
-from app.services.project_calculation_service import calculate_hours
+from app.services.delivery_variance_service import (
+    BaselineHistory,
+    baseline_histories,
+    build_delivery_metrics,
+    stage_label,
+)
+from app.services.project_calculation_service import ProjectHours, batch_calculate_hours
 
 ZERO = Decimal("0")
 _SKIPPED_MILESTONES = {MilestoneStatus.cancelled, MilestoneStatus.not_applicable}
@@ -126,7 +131,30 @@ METRIC_DEFINITIONS = [
         definition=(
             "Timesheet hours booked to milestones of each stage of the same project. Hours "
             "without a milestone, on milestones without a stage, or on another project's "
-            "milestone are reported separately and never spread across stages."
+            "milestone are reported separately and never spread across stages. Only stages "
+            "in the project's own plan are listed; stage rows plus unattributed hours equal "
+            "total actual hours."
+        ),
+    ),
+    KpiDefinition(
+        key="stage_variance",
+        label="Stage variance and utilization",
+        definition=(
+            "Stage actual hours minus the current approved stage estimate (positive = over), "
+            "and actual ÷ estimate as a percentage. Shown only where an approved stage "
+            "estimate exists; utilization is not applicable for a zero estimate. The project "
+            "estimate is never split across stages."
+        ),
+    ),
+    KpiDefinition(
+        key="delivery_variance",
+        label="Schedule variance (days)",
+        definition=(
+            "Actual completion date minus the reference date, in calendar days (negative = "
+            "early, 0 = on time, positive = late). The reference is the original approved "
+            "baseline; without baseline history the stored baseline or current due date is "
+            "used and labelled. Incomplete work is overdue only after its current target date "
+            "(due date, else current baseline) has passed."
         ),
     ),
 ]
@@ -196,13 +224,24 @@ def resolve_estimate(
 
 @dataclass
 class StageHourBuckets:
+    """``stages`` holds the three planned stages; ``other_stages`` any other stage.
+
+    ``attributed`` / ``unattributed`` are relative to the planned stages (used by the
+    Engineering Performance stage table); ``staged`` / ``unstaged`` are relative to
+    every stage (used for per-project stage rows).
+    """
+
     stages: dict[ProjectStage, Decimal] = field(
         default_factory=lambda: {stage: ZERO for stage in PLANNED_STAGES}
     )
-    other_stage: Decimal = ZERO
+    other_stages: dict[ProjectStage, Decimal] = field(default_factory=dict)
     no_stage: Decimal = ZERO
     no_milestone: Decimal = ZERO
     invalid_milestone: Decimal = ZERO
+
+    @property
+    def other_stage(self) -> Decimal:
+        return sum(self.other_stages.values(), ZERO)
 
     @property
     def attributed(self) -> Decimal:
@@ -210,11 +249,24 @@ class StageHourBuckets:
 
     @property
     def unattributed(self) -> Decimal:
-        return self.other_stage + self.no_stage + self.no_milestone + self.invalid_milestone
+        return self.other_stage + self.unstaged
+
+    @property
+    def staged(self) -> Decimal:
+        return self.attributed + self.other_stage
+
+    @property
+    def unstaged(self) -> Decimal:
+        return self.no_stage + self.no_milestone + self.invalid_milestone
 
     @property
     def total(self) -> Decimal:
         return self.attributed + self.unattributed
+
+    def stage_hours(self, stage: ProjectStage) -> Decimal:
+        if stage in self.stages:
+            return self.stages[stage]
+        return self.other_stages.get(stage, ZERO)
 
 
 def stage_hour_buckets(db: Session, project_ids: list[UUID]) -> dict[UUID, StageHourBuckets]:
@@ -250,7 +302,7 @@ def stage_hour_buckets(db: Session, project_ids: list[UUID]) -> dict[UUID, Stage
         elif stage is None:
             bucket.no_stage += value
         else:
-            bucket.other_stage += value
+            bucket.other_stages[stage] = bucket.other_stages.get(stage, ZERO) + value
     return result
 
 
@@ -258,7 +310,11 @@ def stage_hour_buckets(db: Session, project_ids: list[UUID]) -> dict[UUID, Stage
 
 
 def hour_metrics(
-    estimate: Decimal | None, actual: Decimal | None, *, missing_actual_reason: str | None = None
+    estimate: Decimal | None,
+    actual: Decimal | None,
+    *,
+    missing_actual_reason: str | None = None,
+    missing_estimate_reason: str | None = None,
 ) -> tuple[MetricValue, MetricValue, MetricValue]:
     """Return (variance, utilization %, remaining) for one estimate/actual pair."""
     if actual is None:
@@ -266,7 +322,7 @@ def hour_metrics(
         missing = MetricValue(status="unavailable", reason=reason)
         return missing, missing, missing
     if estimate is None:
-        reason = "No approved estimate is recorded for this project."
+        reason = missing_estimate_reason or "No approved estimate is recorded for this project."
         missing = MetricValue(status="unavailable", reason=reason)
         return missing, missing, missing
     variance = MetricValue(value=round_hours(actual - estimate), status="available")
@@ -282,50 +338,230 @@ def hour_metrics(
     return variance, utilization, remaining
 
 
-def _status_hours(db: Session, project_id: UUID) -> tuple[int, dict[TimesheetStatus | None, Decimal]]:
-    rows = db.execute(
+STAGE_SOURCE = (
+    "Timesheet entry → its milestone → that milestone's engineering stage (same project only). "
+    "Entries without a milestone, on milestones without a stage, or on another project's "
+    "milestone are unattributed. Nothing is allocated proportionally."
+)
+
+
+def project_plan_stages(
+    estimate_rows: list[ProjectStageEstimate],
+    milestone_rows: list[Milestone],
+    buckets: StageHourBuckets,
+) -> list[ProjectStage]:
+    """Stages that exist for this project: an estimate, an active milestone, or booked hours."""
+    present = {row.stage for row in estimate_rows}
+    present |= {
+        m.project_stage
+        for m in milestone_rows
+        if m.project_stage is not None and m.status not in _SKIPPED_MILESTONES
+    }
+    present |= {stage for stage, hours in buckets.stages.items() if hours > 0}
+    present |= {stage for stage, hours in buckets.other_stages.items() if hours > 0}
+    return [stage for stage in ProjectStage if stage in present]
+
+
+def stage_attribution_status(buckets: StageHourBuckets, stages: list[ProjectStage]) -> str:
+    if not stages:
+        return "unavailable"
+    if buckets.total <= 0:
+        return "no_hours"
+    if buckets.staged <= 0:
+        return "unavailable"
+    if buckets.unstaged > 0:
+        return "partial"
+    return "complete"
+
+
+def _stage_attribution(
+    buckets: StageHourBuckets,
+    resolution: EstimateResolution,
+    stages: list[ProjectStage],
+    *,
+    actual_missing: bool,
+) -> StageAttributionMetrics:
+    total = buckets.total
+    status = stage_attribution_status(buckets, stages)
+
+    rows: list[StageHoursRow] = []
+    for stage in stages:
+        notes: list[str] = []
+        actual_reason: str | None = None
+        actual: Decimal | None
+        if actual_missing:
+            actual = None
+            actual_reason = "The project's actual hours are missing, so stage hours cannot be stated."
+        elif status == "no_hours":
+            actual = ZERO
+        elif status == "unavailable":
+            actual = None
+            actual_reason = "No timesheet hours are linked to this project's staged milestones."
+        else:
+            actual = round_hours(buckets.stage_hours(stage))
+            if status == "partial":
+                notes.append(
+                    f"{round_hours(buckets.unstaged)} h of the project's hours are not attributed "
+                    "to any stage, so this stage's actual hours may be understated."
+                )
+        if actual_reason:
+            notes.append(actual_reason)
+
+        current = resolution.stage_current.get(stage)
+        original = resolution.stage_original.get(stage)
+        estimate_reason = None
+        if current is None:
+            estimate_reason = "No approved estimate exists for this stage."
+            if stage not in PLANNED_STAGES:
+                estimate_reason += (
+                    " Approved stage estimates cover Blockout, Intermediate Design and Final "
+                    "Design only."
+                )
+            notes.append(estimate_reason)
+        elif current <= 0:
+            notes.append("The approved stage estimate is zero hours, so utilization is not applicable.")
+        variance, utilization, remaining = hour_metrics(
+            current,
+            actual,
+            missing_actual_reason=actual_reason,
+            missing_estimate_reason=estimate_reason,
+        )
+        if actual is None:
+            quality = "unavailable"
+        elif status in {"complete", "no_hours"} and current is not None and current > 0:
+            quality = "complete"
+        else:
+            quality = "limited"
+        rows.append(
+            StageHoursRow(
+                key=stage.value,
+                label=stage_label(stage) or stage.value,
+                has_approved_estimate=current is not None,
+                original_estimate_hours=round_hours(original) if original is not None else None,
+                current_estimate_hours=round_hours(current) if current is not None else None,
+                actual_hours=actual,
+                percent_of_project_actual=round_hours(actual / total * Decimal("100"))
+                if actual is not None and total > 0
+                else None,
+                variance_hours=variance.value,
+                variance=variance,
+                utilization_percent=utilization,
+                remaining_hours=remaining,
+                data_quality=quality,  # type: ignore[arg-type]
+                data_quality_notes=notes,
+            )
+        )
+    return StageAttributionMetrics(
+        status=status,  # type: ignore[arg-type]
+        coverage_percent=round_hours(buckets.staged / total * Decimal("100")) if total > 0 else None,
+        total_hours=None if actual_missing else round_hours(total),
+        attributed_hours=round_hours(buckets.staged),
+        unattributed_hours=round_hours(buckets.unstaged),
+        other_stage_hours=round_hours(buckets.other_stage),
+        no_stage_hours=round_hours(buckets.no_stage),
+        no_milestone_hours=round_hours(buckets.no_milestone),
+        invalid_milestone_hours=round_hours(buckets.invalid_milestone),
+        source=STAGE_SOURCE,
+        rows=rows,
+    )
+
+
+@dataclass
+class MetricInputs:
+    """Source records for one project, loaded in bulk by ``load_metric_inputs``."""
+
+    estimate_rows: list[ProjectStageEstimate] = field(default_factory=list)
+    milestone_rows: list[Milestone] = field(default_factory=list)
+    revision_count: int = 0
+    last_revised_at: datetime | None = None
+    hours: ProjectHours | None = None
+    entry_count: int = 0
+    by_status: dict[TimesheetStatus | None, Decimal] = field(default_factory=dict)
+    buckets: StageHourBuckets = field(default_factory=StageHourBuckets)
+    history: BaselineHistory = field(default_factory=BaselineHistory)
+    quotes: list[Quote] = field(default_factory=list)
+    quote_revisions: dict[UUID, QuoteRevision | None] = field(default_factory=dict)
+
+
+def load_metric_inputs(db: Session, projects: list[Project]) -> dict[UUID, MetricInputs]:
+    """A fixed number of grouped queries regardless of how many projects are passed."""
+    ids = [project.id for project in projects]
+    result = {pid: MetricInputs() for pid in ids}
+    if not ids:
+        return result
+    for row in db.scalars(
+        select(ProjectStageEstimate).where(ProjectStageEstimate.project_id.in_(ids))
+    ):
+        result[row.project_id].estimate_rows.append(row)
+    for row in db.scalars(select(Milestone).where(Milestone.project_id.in_(ids))):
+        result[row.project_id].milestone_rows.append(row)
+    for project_id, count, last in db.execute(
         select(
+            ProjectEstimateRevision.project_id,
+            func.count(ProjectEstimateRevision.id),
+            func.max(ProjectEstimateRevision.revised_at),
+        )
+        .where(ProjectEstimateRevision.project_id.in_(ids))
+        .group_by(ProjectEstimateRevision.project_id)
+    ):
+        result[project_id].revision_count = int(count or 0)
+        result[project_id].last_revised_at = last
+    for project_id, hours in batch_calculate_hours(db, projects).items():
+        result[project_id].hours = hours
+    for project_id, status, count, hours in db.execute(
+        select(
+            TimesheetEntry.project_id,
             Timesheet.status,
             func.count(TimesheetEntry.id),
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
         .select_from(TimesheetEntry)
         .outerjoin(Timesheet, Timesheet.id == TimesheetEntry.timesheet_id)
-        .where(TimesheetEntry.project_id == project_id, TimesheetEntry.is_deleted.is_(False))
-        .group_by(Timesheet.status)
+        .where(TimesheetEntry.project_id.in_(ids), TimesheetEntry.is_deleted.is_(False))
+        .group_by(TimesheetEntry.project_id, Timesheet.status)
+    ):
+        result[project_id].entry_count += int(count or 0)
+        result[project_id].by_status[status] = _dec(hours)
+    for project_id, buckets in stage_hour_buckets(db, ids).items():
+        result[project_id].buckets = buckets
+    for project_id, history in baseline_histories(db, ids).items():
+        result[project_id].history = history
+    quotes = db.scalars(
+        select(Quote).where(Quote.project_id.in_(ids), Quote.is_active.is_(True))
     ).all()
-    count = sum(int(n or 0) for _, n, _ in rows)
-    return count, {status: _dec(hours) for status, _, hours in rows}
+    for quote in quotes:
+        result[quote.project_id].quotes.append(quote)
+    if quotes:
+        revisions = {
+            (row.quote_id, row.version, row.revision): row
+            for row in db.scalars(
+                select(QuoteRevision).where(QuoteRevision.quote_id.in_([q.id for q in quotes]))
+            )
+        }
+        for quote in quotes:
+            result[quote.project_id].quote_revisions[quote.id] = revisions.get(
+                (quote.id, quote.current_version, quote.current_revision)
+            )
+    return result
 
 
 def _milestone_readiness(
-    db: Session, project: Project, milestone_rows: list[Milestone], today: date
+    project: Project, milestone_rows: list[Milestone], delivery: DeliveryMetrics
 ) -> MilestoneReadiness:
     counted = [m for m in milestone_rows if m.status not in _SKIPPED_MILESTONES]
     completed = [m for m in counted if m.status == MilestoneStatus.completed]
     open_rows = [m for m in counted if m.status != MilestoneStatus.completed]
-    baseline_revisions = db.scalars(
-        select(ProjectBaselineRevision)
-        .where(ProjectBaselineRevision.project_id == project.id)
-        .order_by(ProjectBaselineRevision.revision_number)
-    ).all()
-    original_baseline = (
-        baseline_revisions[0].previous_completion_date
-        if baseline_revisions and baseline_revisions[0].previous_completion_date
-        else project.baseline_completion_date
-    )
-
-    def target(m: Milestone) -> date | None:
-        return m.baseline_finish_date or m.due_date
-
+    open_statuses = [
+        row.status for row in delivery.milestones if row.status in {"overdue", "not_due", "no_target"}
+    ]
     return MilestoneReadiness(
         total=len(milestone_rows),
         completed=len(completed),
         open=len(open_rows),
         skipped=len(milestone_rows) - len(counted),
         open_required=sum(1 for m in open_rows if m.is_required),
-        open_without_target_date=sum(1 for m in open_rows if target(m) is None),
-        open_overdue=sum(1 for m in open_rows if target(m) is not None and target(m) < today),
+        open_without_target_date=open_statuses.count("no_target"),
+        open_overdue=open_statuses.count("overdue"),
         completed_with_completion_date=sum(
             1 for m in completed if m.completed_date or m.completed_at
         ),
@@ -333,28 +569,20 @@ def _milestone_readiness(
         with_original_planned_hours=sum(1 for m in counted if m.original_planned_hours is not None),
         current_target_date=project.due_date,
         baseline_completion_date=project.baseline_completion_date,
-        original_baseline_completion_date=original_baseline,
-        baseline_revision_count=len(baseline_revisions),
-        actual_completion_date=project.completed_at.date() if project.completed_at else None,
-    )
-
-
-def _current_quote_revision(db: Session, quote: Quote) -> QuoteRevision | None:
-    return db.scalar(
-        select(QuoteRevision).where(
-            QuoteRevision.quote_id == quote.id,
-            QuoteRevision.version == quote.current_version,
-            QuoteRevision.revision == quote.current_revision,
-        )
+        original_baseline_completion_date=delivery.project.original_baseline_completion_date,
+        baseline_revision_count=delivery.project.baseline_revision_count,
+        actual_completion_date=delivery.project.actual_completion_date,
     )
 
 
 def _quote_linkage(
-    db: Session, project: Project, *, details_visible: bool, issues: list[DataQualityIssue]
+    project: Project,
+    inputs: MetricInputs,
+    *,
+    details_visible: bool,
+    issues: list[DataQualityIssue],
 ) -> QuoteLinkage:
-    quotes = db.scalars(
-        select(Quote).where(Quote.project_id == project.id, Quote.is_active.is_(True))
-    ).all()
+    quotes = inputs.quotes
     if not quotes:
         issues.append(
             DataQualityIssue(
@@ -379,7 +607,7 @@ def _quote_linkage(
             status="ambiguous", active_quote_count=len(quotes), details_visible=details_visible
         )
     quote = quotes[0]
-    revision = _current_quote_revision(db, quote)
+    revision = inputs.quote_revisions.get(quote.id)
     if revision is None:
         issues.append(
             DataQualityIssue(
@@ -431,22 +659,44 @@ def build_project_engineering_metrics(
     today: date | None = None,
 ) -> ProjectEngineeringMetrics:
     """Read-only: never writes to the session."""
+    inputs = load_metric_inputs(db, [project])[project.id]
+    return compute_project_metrics(
+        project, inputs, finance_details_visible=finance_details_visible, today=today
+    )
+
+
+def build_engineering_metrics_batch(
+    db: Session,
+    projects: list[Project],
+    *,
+    finance_details_visible: bool,
+    today: date | None = None,
+) -> dict[UUID, ProjectEngineeringMetrics]:
+    """Same rules as ``build_project_engineering_metrics`` for many projects; read-only."""
+    today = today or date.today()
+    inputs = load_metric_inputs(db, projects)
+    return {
+        project.id: compute_project_metrics(
+            project, inputs[project.id], finance_details_visible=finance_details_visible, today=today
+        )
+        for project in projects
+    }
+
+
+def compute_project_metrics(
+    project: Project,
+    inputs: MetricInputs,
+    *,
+    finance_details_visible: bool,
+    today: date | None = None,
+) -> ProjectEngineeringMetrics:
     today = today or date.today()
     issues: list[DataQualityIssue] = []
 
-    estimate_rows = list(
-        db.scalars(
-            select(ProjectStageEstimate).where(ProjectStageEstimate.project_id == project.id)
-        ).all()
-    )
-    milestone_rows = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
-    )
+    estimate_rows = inputs.estimate_rows
+    milestone_rows = inputs.milestone_rows
     resolution = resolve_estimate(project, estimate_rows, milestone_rows)
-    revisions = db.execute(
-        select(func.count(ProjectEstimateRevision.id), func.max(ProjectEstimateRevision.revised_at))
-        .where(ProjectEstimateRevision.project_id == project.id)
-    ).one()
+    revisions = (inputs.revision_count, inputs.last_revised_at)
 
     quoted = round_hours(_dec(project.quoted_hours)) if project.quoted_hours else None
     estimate = EstimateMetrics(
@@ -508,8 +758,10 @@ def build_project_engineering_metrics(
                 )
             )
 
-    hours = calculate_hours(db, project)
-    entry_count, by_status = _status_hours(db, project.id)
+    hours = inputs.hours
+    if hours is None:
+        raise ValueError("MetricInputs.hours must be loaded with load_metric_inputs")
+    entry_count, by_status = inputs.entry_count, inputs.by_status
     has_progress = project.execution_status == ExecutionStatus.completed or any(
         m.status == MilestoneStatus.completed for m in milestone_rows
     )
@@ -585,62 +837,24 @@ def build_project_engineering_metrics(
         resolution.original, actual_total, missing_actual_reason=missing_reason
     )
 
-    buckets = stage_hour_buckets(db, [project.id])[project.id]
-    has_stage_plan = bool(estimate_rows) or any(
-        m.project_stage in PLANNED_STAGES for m in milestone_rows
+    buckets = inputs.buckets
+    stages = project_plan_stages(estimate_rows, milestone_rows, buckets)
+    stage_attribution = _stage_attribution(
+        buckets, resolution, stages, actual_missing=actual_status == "missing"
     )
     total = buckets.total
-    if not has_stage_plan:
-        stage_status = "unavailable"
-    elif total <= 0:
-        stage_status = "no_hours"
-    elif buckets.attributed <= 0:
-        stage_status = "unavailable"
-    elif buckets.unattributed > 0:
-        stage_status = "partial"
-    else:
-        stage_status = "complete"
-    rows: list[StageHoursRow] = []
-    if stage_status in {"complete", "partial"}:
-        for stage in PLANNED_STAGES:
-            current_stage = resolution.stage_current.get(stage)
-            stage_actual = round_hours(buckets.stages[stage])
-            rows.append(
-                StageHoursRow(
-                    key=stage.value,
-                    label=PLANNED_STAGE_LABELS[stage],
-                    original_estimate_hours=round_hours(resolution.stage_original[stage])
-                    if stage in resolution.stage_original
-                    else None,
-                    current_estimate_hours=round_hours(current_stage) if current_stage is not None else None,
-                    actual_hours=stage_actual,
-                    variance_hours=round_hours(stage_actual - current_stage)
-                    if current_stage is not None
-                    else None,
-                )
-            )
-    stage_attribution = StageAttributionMetrics(
-        status=stage_status,  # type: ignore[arg-type]
-        coverage_percent=round_hours(buckets.attributed / total * Decimal("100")) if total > 0 else None,
-        attributed_hours=round_hours(buckets.attributed),
-        other_stage_hours=round_hours(buckets.other_stage),
-        no_stage_hours=round_hours(buckets.no_stage),
-        no_milestone_hours=round_hours(buckets.no_milestone),
-        invalid_milestone_hours=round_hours(buckets.invalid_milestone),
-        rows=rows,
-    )
-    if stage_status == "partial":
+    if stage_attribution.status == "partial":
         issues.append(
             DataQualityIssue(
                 code="stage_attribution_partial",
                 severity="warning",
                 message=(
-                    f"{round_hours(buckets.unattributed)} h of {round_hours(total)} h are not linked "
+                    f"{round_hours(buckets.unstaged)} h of {round_hours(total)} h are not linked "
                     "to a staged milestone; stage hours are incomplete and are not adjusted."
                 ),
             )
         )
-    elif stage_status == "unavailable" and total > 0:
+    elif stage_attribution.status == "unavailable" and total > 0:
         issues.append(
             DataQualityIssue(
                 code="stage_attribution_unavailable",
@@ -648,6 +862,9 @@ def build_project_engineering_metrics(
                 message=(
                     "Hours are not linked to staged milestones, so stage-wise actual hours "
                     "cannot be reported. Total actual hours are unaffected."
+                    if stages
+                    else "This project's milestones carry no engineering stage, so stage-wise "
+                    "hours do not apply. Total actual hours are unaffected."
                 ),
             )
         )
@@ -663,7 +880,8 @@ def build_project_engineering_metrics(
             )
         )
 
-    milestones = _milestone_readiness(db, project, milestone_rows, today)
+    delivery = build_delivery_metrics(project, milestone_rows, inputs.history, today)
+    milestones = _milestone_readiness(project, milestone_rows, delivery)
     if project.execution_status == ExecutionStatus.completed:
         if project.completed_at is None:
             issues.append(
@@ -684,7 +902,8 @@ def build_project_engineering_metrics(
                     ),
                 )
             )
-    if milestones.original_baseline_completion_date is None:
+    project_delivery = delivery.project
+    if project_delivery.reference_source in {"current_due_date", "none"}:
         issues.append(
             DataQualityIssue(
                 code="original_commitment_unavailable",
@@ -695,9 +914,36 @@ def build_project_engineering_metrics(
                 ),
             )
         )
+    elif project_delivery.reference_source == "baseline_unverified":
+        issues.append(
+            DataQualityIssue(
+                code="baseline_history_missing",
+                severity="info",
+                message=(
+                    "A baseline is stored but its revision history is incomplete, so it may not "
+                    "be the original approved baseline."
+                ),
+            )
+        )
+    undated = [
+        row
+        for row in delivery.milestones
+        if row.status in {"no_target", "completion_date_missing"}
+    ]
+    if undated:
+        issues.append(
+            DataQualityIssue(
+                code="milestone_delivery_dates_missing",
+                severity="info",
+                message=(
+                    f"{len(undated)} milestone(s) have no target or completion date, so their "
+                    "delivery variance cannot be calculated."
+                ),
+            )
+        )
 
     quote_linkage = _quote_linkage(
-        db, project, details_visible=finance_details_visible, issues=issues
+        project, inputs, details_visible=finance_details_visible, issues=issues
     )
 
     if resolution.current is None or actual_status == "missing":
@@ -724,6 +970,7 @@ def build_project_engineering_metrics(
         original_variance_hours=original_variance,
         stage_attribution=stage_attribution,
         milestones=milestones,
+        delivery=delivery,
         quote_linkage=quote_linkage,
         issues=issues,
         definitions=METRIC_DEFINITIONS,

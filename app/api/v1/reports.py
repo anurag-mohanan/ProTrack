@@ -44,7 +44,7 @@ from app.crud.team_reports import (
     get_team_profitability_report,
     get_team_utilization_report,
 )
-from app.models.enums import ProjectStage
+from app.models.enums import ExecutionStatus, ProjectClassification, ProjectStage
 from app.crud.dashboard import get_designer_workload
 from app.models.models import Customer, Stream, Team, User
 from app.schemas.dashboard import DesignerWorkload
@@ -86,6 +86,14 @@ from app.schemas.reporting import (
     ReportScheduleRequest,
 )
 from app.schemas.engineering_performance import EngineeringPerformanceReport
+from app.schemas.quote_to_delivery import QuoteToDeliveryReport
+from app.services.reporting.quote_to_delivery import (
+    CLASSIFICATION_LABELS,
+    POPULATION_LABELS,
+    QtdFilters,
+    QtdTableOptions,
+    build_quote_to_delivery,
+)
 from app.services.reporting import reporting_engine
 from app.services.reporting.customer_timesheet_pack import build_customer_timesheet_pack
 from app.services.reporting.engineering_performance import (
@@ -664,6 +672,115 @@ def engineering_performance_export(
             "plan_basis": filters.plan_basis,
         },
         team_id=next(iter(filters.team_ids)) if filters.team_ids and len(filters.team_ids) == 1 else None,
+        filename=filename,
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _qtd_params(
+    params=Depends(_performance_filters),
+    population: str = Query("completed"),
+    project_classification: ProjectClassification | None = Query(None),
+    status_filter: ExecutionStatus | None = Query(None, alias="status"),
+    search: str | None = Query(None, max_length=100),
+    segment: str | None = Query(None),
+    stage: str | None = Query(None),
+    sort: str | None = Query(None),
+) -> tuple[QtdFilters, QtdTableOptions, dict[str, str | None]]:
+    base, labels = params
+    labels = {key: value for key, value in labels.items() if key != "plan_basis"}
+    labels["population"] = POPULATION_LABELS.get(population, (population,))[0]
+    labels["classification"] = (
+        CLASSIFICATION_LABELS.get(project_classification.value) if project_classification else None
+    )
+    labels["status"] = status_filter.value.replace("_", " ").capitalize() if status_filter else None
+    filters = QtdFilters(
+        base=base,
+        population=population,
+        classification=project_classification,
+        status=status_filter,
+    )
+    options = QtdTableOptions(search=search, segment=segment, stage=stage, sort=sort)
+    return filters, options, labels
+
+
+def _build_qtd(db: Session, filters: QtdFilters, options: QtdTableOptions, labels) -> QuoteToDeliveryReport:
+    try:
+        return build_quote_to_delivery(db, filters, options, filter_labels=labels)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.get("/quote-to-delivery", response_model=QuoteToDeliveryReport)
+def quote_to_delivery_report(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    params=Depends(_qtd_params),
+):
+    """Quote-to-Delivery report; the project table is paginated, aggregates cover all rows."""
+    filters, options, labels = params
+    options.page = page
+    options.page_size = page_size
+    return _build_qtd(db, filters, options, labels)
+
+
+@router.get("/quote-to-delivery/export.xlsx")
+def quote_to_delivery_export(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    params=Depends(_qtd_params),
+):
+    """Every row matching the filters, search and segment — not only the visible page."""
+    from app.core.access_control import SPECIAL_EXPORT_REPORTS
+    from app.core.permissions import user_holds_special
+    from app.models.foundation import CompanySettings
+    from app.services.reporting.excel.quote_to_delivery import (
+        generate_quote_to_delivery_excel,
+    )
+
+    if not user_holds_special(db, current_user, SPECIAL_EXPORT_REPORTS):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires the 'export_reports' permission.",
+        )
+    filters, options, labels = params
+    options.page_size = None
+    report = _build_qtd(db, filters, options, labels)
+    settings = db.scalar(select(CompanySettings).limit(1))
+    company_name = settings.company_name if settings and settings.company_name else "ProTrack"
+    try:
+        content = generate_quote_to_delivery_excel(report, company_name=company_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if filters.population == "completed":
+        span = f"{report.period.start_date:%Y%m%d}-{report.period.end_date:%Y%m%d}"
+    else:
+        span = f"open_{report.population.as_of:%Y%m%d}"
+    filename = f"Quote_to_Delivery_{span}.xlsx"
+    base = filters.base
+    log_report_generation(
+        db,
+        user=current_user,
+        report_type="quote-to-delivery",
+        filters={
+            "population": filters.population,
+            "period_type": report.period.period_type,
+            "start_date": report.period.start_date.isoformat(),
+            "end_date": report.period.end_date.isoformat(),
+            "customer_id": str(base.customer_id) if base.customer_id else None,
+            "classification": filters.classification.value if filters.classification else None,
+            "status": filters.status.value if filters.status else None,
+            "search": options.search,
+            "segment": options.segment,
+            "stage": options.stage,
+            "rows": report.projects.total,
+        },
+        team_id=next(iter(base.team_ids)) if base.team_ids and len(base.team_ids) == 1 else None,
         filename=filename,
     )
     return Response(

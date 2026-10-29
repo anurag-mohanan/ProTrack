@@ -18,7 +18,13 @@ import {
   fetchProjectEngineeringMetrics,
   projectPlanningQueryKeys,
 } from '../../../api/projectPlanning';
-import type { MetricValue, ProjectEngineeringMetrics } from '../../../types/projectPlanning';
+import type {
+  DeliveryMetrics,
+  DeliveryStatus,
+  MetricValue,
+  ProjectEngineeringMetrics,
+  StageHoursRow,
+} from '../../../types/projectPlanning';
 import { formatDate, formatNumber } from '../../../utils/format';
 import { ErrorState } from '../../common/ErrorState';
 import { LoadingState } from '../../common/LoadingState';
@@ -79,6 +85,152 @@ function Metric({
           {hint}
         </Typography>
       ) : null}
+    </Box>
+  );
+}
+
+const STAGE_QUALITY: Record<
+  StageHoursRow['data_quality'],
+  { label: string; color: 'success' | 'warning' | 'default' }
+> = {
+  complete: { label: 'Complete', color: 'success' },
+  limited: { label: 'Limited', color: 'warning' },
+  unavailable: { label: 'Unavailable', color: 'default' },
+};
+
+const DELIVERY_STATUS: Record<
+  DeliveryStatus,
+  { label: string; color: 'success' | 'warning' | 'error' | 'default' }
+> = {
+  early: { label: 'Early', color: 'success' },
+  on_time: { label: 'On time', color: 'success' },
+  late: { label: 'Late', color: 'error' },
+  overdue: { label: 'Overdue', color: 'error' },
+  not_due: { label: 'Not yet due', color: 'default' },
+  no_target: { label: 'No target date', color: 'default' },
+  completion_date_missing: { label: 'Completion date missing', color: 'warning' },
+  not_applicable: { label: 'Not applicable', color: 'default' },
+};
+
+const signedDays = (value: number | null) =>
+  value === null ? '—' : `${value > 0 ? '+' : ''}${value} day${Math.abs(value) === 1 ? '' : 's'}`;
+
+function DeliveryChip({ status }: { status: DeliveryStatus }) {
+  const meta = DELIVERY_STATUS[status];
+  return <Chip size="small" variant="outlined" label={meta.label} color={meta.color} />;
+}
+
+function ProjectDeliverySection({
+  delivery,
+  definition,
+}: {
+  delivery: DeliveryMetrics;
+  definition?: string;
+}) {
+  const project = delivery.project;
+  const milestones = delivery.milestones.filter((row) => row.status !== 'not_applicable');
+  const variance =
+    project.schedule_variance_days !== null
+      ? signedDays(project.schedule_variance_days)
+      : project.days_overdue !== null
+        ? `${project.days_overdue} day${project.days_overdue === 1 ? '' : 's'} overdue`
+        : '—';
+  const targetHint = [
+    project.current_due_date
+      ? 'Project due date'
+      : project.current_baseline_completion_date
+        ? 'Current baseline (no due date set)'
+        : null,
+    project.baseline_revision_count > 1
+      ? `Re-baselined ${project.baseline_revision_count - 1} time(s); current baseline ${formatDate(project.current_baseline_completion_date)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          Delivery
+        </Typography>
+        {definition ? (
+          <Tooltip title={definition}>
+            <InfoOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+          </Tooltip>
+        ) : null}
+        <DeliveryChip status={project.status} />
+      </Stack>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 3, mb: 1 }}>
+        <Metric
+          label="Original baseline completion"
+          value={formatDate(project.original_baseline_completion_date) || 'Not recorded'}
+          hint={
+            project.reference_source === 'baseline_unverified'
+              ? 'No revision history — may not be the original'
+              : project.reference_source === 'original_baseline'
+                ? null
+                : 'No baseline; original commitment unknown'
+          }
+        />
+        <Metric
+          label="Current target date"
+          value={formatDate(project.current_target_date) || 'Not set'}
+          hint={targetHint || null}
+        />
+        <Metric
+          label="Actual completion"
+          value={
+            formatDate(project.actual_completion_date) ||
+            (project.status === 'completion_date_missing' ? 'Missing' : 'Not completed')
+          }
+        />
+        <Metric label="Schedule variance" value={variance} hint={`Against: ${project.reference_label}`} />
+      </Stack>
+      {milestones.length > 0 ? (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Milestone</TableCell>
+              <TableCell>Stage</TableCell>
+              <TableCell>Original baseline</TableCell>
+              <TableCell>Current target</TableCell>
+              <TableCell>Actual completion</TableCell>
+              <TableCell align="right">Variance</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {milestones.map((row) => (
+              <TableRow key={row.milestone_id}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>{row.stage_label ?? '—'}</TableCell>
+                <TableCell>
+                  {formatDate(row.original_baseline_finish_date) || 'Not recorded'}
+                  {row.reference_source === 'current_due_date' ? (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      No baseline; due date used
+                    </Typography>
+                  ) : null}
+                </TableCell>
+                <TableCell>{formatDate(row.current_target_date) || '—'}</TableCell>
+                <TableCell>{formatDate(row.actual_completion_date) || '—'}</TableCell>
+                <TableCell align="right">
+                  {row.days_overdue !== null
+                    ? `${row.days_overdue} d overdue`
+                    : signedDays(row.schedule_variance_days)}
+                </TableCell>
+                <TableCell>
+                  <DeliveryChip status={row.status} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : null}
+      <Typography variant="caption" color="text.secondary">
+        {delivery.sign_convention}
+      </Typography>
     </Box>
   );
 }
@@ -199,7 +351,7 @@ export function ProjectEngineeringMetricsPanel({ projectId }: { projectId: strin
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               Actual hours by stage
             </Typography>
-            <Tooltip title={definition('stage_hours') ?? ''}>
+            <Tooltip title={`${definition('stage_hours') ?? ''} ${definition('stage_variance') ?? ''}`}>
               <InfoOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
             </Tooltip>
           </Stack>
@@ -207,59 +359,76 @@ export function ProjectEngineeringMetricsPanel({ projectId }: { projectId: strin
             <TableHead>
               <TableRow>
                 <TableCell>Stage</TableCell>
-                <TableCell align="right">Original estimate</TableCell>
-                <TableCell align="right">Current estimate</TableCell>
-                <TableCell align="right">Actual</TableCell>
+                <TableCell align="right">Approved estimate</TableCell>
+                <TableCell align="right">Actual hours</TableCell>
                 <TableCell align="right">Variance</TableCell>
+                <TableCell align="right">Utilization</TableCell>
+                <TableCell>Data quality</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {stages.rows.map((row) => (
                 <TableRow key={row.key}>
                   <TableCell>{row.label}</TableCell>
-                  <TableCell align="right">{hours(row.original_estimate_hours)}</TableCell>
-                  <TableCell align="right">{hours(row.current_estimate_hours)}</TableCell>
-                  <TableCell align="right">{hours(row.actual_hours)}</TableCell>
-                  <TableCell align="right">{signedHours(row.variance_hours)}</TableCell>
+                  <TableCell align="right">
+                    {row.has_approved_estimate ? hours(row.current_estimate_hours) : 'No approved estimate'}
+                    {row.has_approved_estimate &&
+                    row.original_estimate_hours !== null &&
+                    Number(row.original_estimate_hours) !== Number(row.current_estimate_hours) ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        Original {hours(row.original_estimate_hours)}
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell align="right">
+                    {row.actual_hours === null ? 'Unavailable' : hours(row.actual_hours)}
+                    {row.percent_of_project_actual !== null ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {formatNumber(row.percent_of_project_actual, 1)}% of project
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell align="right">{metricText(row.variance, signedHours)}</TableCell>
+                  <TableCell align="right">
+                    {metricText(row.utilization_percent, (v) => `${formatNumber(v, 1)}%`)}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={row.data_quality_notes.join(' ')}>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={STAGE_QUALITY[row.data_quality].label}
+                        color={STAGE_QUALITY[row.data_quality].color}
+                      />
+                    </Tooltip>
+                  </TableCell>
                 </TableRow>
               ))}
-              {stages.status === 'partial' ? (
+              {Number(stages.unattributed_hours) > 0 && stages.total_hours !== null ? (
                 <TableRow>
-                  <TableCell colSpan={3}>
+                  <TableCell colSpan={2}>
                     <Typography variant="body2" color="text.secondary">
                       Not attributed to a stage
                     </Typography>
                   </TableCell>
-                  <TableCell align="right">
-                    {hours(
-                      Number(stages.other_stage_hours) +
-                        Number(stages.no_stage_hours) +
-                        Number(stages.no_milestone_hours) +
-                        Number(stages.invalid_milestone_hours),
-                    )}
-                  </TableCell>
-                  <TableCell />
+                  <TableCell align="right">{hours(stages.unattributed_hours)}</TableCell>
+                  <TableCell colSpan={3} />
                 </TableRow>
               ) : null}
             </TableBody>
           </Table>
           <Typography variant="caption" color="text.secondary">
-            {formatNumber(stages.coverage_percent, 1)}% of actual hours are linked to a staged milestone.
+            {stages.coverage_percent !== null
+              ? `${formatNumber(stages.coverage_percent, 1)}% of ${hours(stages.total_hours)} actual hours are linked to a staged milestone. `
+              : ''}
+            Variance = actual − approved estimate (positive means over). Hours are never spread across stages.
           </Typography>
         </Box>
       ) : null}
 
+      <ProjectDeliverySection delivery={data.delivery} definition={definition('delivery_variance')} />
+
       <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 3, mb: data.issues.length ? 2 : 0 }}>
-        <Metric label="Current due date" value={formatDate(milestones.current_target_date) || '—'} />
-        <Metric
-          label="Original baseline completion"
-          value={formatDate(milestones.original_baseline_completion_date) || 'Not recorded'}
-          hint={
-            milestones.baseline_revision_count > 0
-              ? `Current baseline ${formatDate(milestones.baseline_completion_date)} after ${milestones.baseline_revision_count} revision(s)`
-              : null
-          }
-        />
         <Metric
           label="Milestones"
           value={`${milestones.completed} of ${milestones.total - milestones.skipped} completed`}

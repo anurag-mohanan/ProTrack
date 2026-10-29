@@ -50,6 +50,13 @@ export interface PerformanceSummary {
   milestones_completed: number;
   milestones_on_time: number;
   milestone_on_time_rate: number | null;
+  delivery_evaluable_projects: number;
+  delivered_early: number;
+  delivered_on_reference_date: number;
+  delivered_late: number;
+  average_delivery_variance_days: number | null;
+  median_delivery_variance_days: number | null;
+  delivery_reference_counts: Record<string, number>;
 }
 
 export interface StagePerformanceRow {
@@ -61,6 +68,12 @@ export interface StagePerformanceRow {
   actual_hours: number;
   variance_hours: number;
   variance_percent: number | null;
+  eligible_projects: number;
+  average_variance_hours: number | null;
+  median_variance_hours: number | null;
+  projects_over_estimate: number;
+  percent_over_estimate: number | null;
+  actual_share_percent: number | null;
 }
 
 export interface StagePerformance {
@@ -68,6 +81,17 @@ export interface StagePerformance {
   projects_without_stage_plan: number;
   rows: StagePerformanceRow[];
   unstaged_actual_hours: number;
+  complete_attribution_projects: number;
+  partial_attribution_projects: number;
+  unattributed_projects: number;
+  eligibility_rule: string;
+}
+
+export interface EffortClassificationRow {
+  key: string;
+  label: string;
+  hours: number;
+  percent: number | null;
 }
 
 export interface BreakdownRow {
@@ -119,6 +143,13 @@ export interface ProjectPerformanceRow {
   milestones_total: number;
   milestones_completed: number;
   milestones_on_time: number;
+  original_baseline_completion_date: string | null;
+  current_baseline_completion_date: string | null;
+  delivery_reference_source: 'original_baseline' | 'baseline_unverified' | 'current_due_date' | 'none';
+  delivery_reference_date: string | null;
+  delivery_status: string | null;
+  delivery_variance_days: number | null;
+  stage_attribution_status: string;
 }
 
 export interface PerformanceDataWarning {
@@ -132,6 +163,7 @@ export interface EngineeringPerformanceReport {
   filters: Record<string, string | null>;
   summary: PerformanceSummary;
   stage_performance: StagePerformance;
+  effort_by_classification: EffortClassificationRow[];
   breakdowns: Breakdown[];
   projects: ProjectPerformanceRow[];
   warnings: PerformanceDataWarning[];

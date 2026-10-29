@@ -34,9 +34,9 @@ import {
 import type {
   Breakdown,
   BreakdownRow,
+  EffortClassificationRow,
   EngineeringPerformanceParams,
   EngineeringPerformanceReport,
-  PerformancePeriodType,
   KpiDefinition,
   PerformanceDataWarning,
   PerformancePlanBasis,
@@ -49,97 +49,26 @@ import type { Team } from '../../types/Team';
 import type { ProjectType } from '../../types/ProjectTemplate';
 import { ensureArray } from '../../types/pagination';
 import { formatDate, formatNumber, userDisplayName } from '../../utils/format';
-import { defaultAnchorForPeriod, toIsoDate } from '../../utils/reportPeriodSelection';
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import { AnalyticsBarChart } from '../analytics/AnalyticsCharts';
-import { ReportPeriodSelectors, syncAnchorForPeriodChange } from './ReportPeriodSelectors';
+import { PerformancePeriodFields } from './PerformancePeriodFields';
+import { KpiCard, SectionTitle } from './ReportKpi';
+import { MONTH_SHORT, hours, percent, signedDays, signedHours, varianceColor } from './reportFormat';
+import { usePerformancePeriod } from './usePerformancePeriod';
 
-const PERIOD_OPTIONS: { value: PerformancePeriodType; label: string }[] = [
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly (financial)' },
-  { value: 'yearly', label: 'Financial year' },
-  { value: 'custom', label: 'Custom range' },
-];
+const REFERENCE_SHORT: Record<ProjectPerformanceRow['delivery_reference_source'], string> = {
+  original_baseline: 'vs original baseline',
+  baseline_unverified: 'vs baseline (no history)',
+  current_due_date: 'vs due date (no baseline)',
+  none: 'no reference date',
+};
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function fyStartYearFor(date: Date, fyStartMonth: number): number {
-  return date.getMonth() + 1 >= fyStartMonth ? date.getFullYear() : date.getFullYear() - 1;
-}
-
-function fyLabel(startYear: number, fyStartMonth: number): string {
-  if (fyStartMonth === 1) return `FY ${startYear}`;
-  return `FY ${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
-}
-
-/** First day of financial quarter `quarter` (1–4) of the FY starting in `startYear`. */
-function fyQuarterStart(startYear: number, quarter: number, fyStartMonth: number): Date {
-  const offset = fyStartMonth - 1 + (quarter - 1) * 3;
-  return new Date(startYear + Math.floor(offset / 12), offset % 12, 1);
-}
-
-function fyQuarterLabel(quarter: number, fyStartMonth: number): string {
-  const first = (fyStartMonth - 1 + (quarter - 1) * 3) % 12;
-  const last = (first + 2) % 12;
-  return `Q${quarter} (${MONTH_SHORT[first]}–${MONTH_SHORT[last]})`;
-}
-
-function fyQuarterFor(date: Date, fyStartMonth: number): number {
-  const monthsIn = (date.getMonth() + 1 - fyStartMonth + 12) % 12;
-  return Math.floor(monthsIn / 3) + 1;
-}
-
-function hours(value: number | null | undefined): string {
-  return value == null ? '—' : formatNumber(value, 1);
-}
-
-function percent(value: number | null | undefined): string {
-  return value == null ? '—' : `${formatNumber(value, 1)}%`;
-}
-
-function signedHours(value: number | null | undefined): string {
-  if (value == null) return '—';
-  return `${value > 0 ? '+' : ''}${formatNumber(value, 1)}`;
-}
-
-function varianceColor(value: number | null | undefined): string | undefined {
-  if (value == null || value === 0) return undefined;
-  return value > 0 ? 'error.main' : 'success.main';
-}
-
-function KpiCard({ label, value, caption }: { label: string; value: string; caption?: string }) {
-  return (
-    <Paper variant="outlined" sx={{ p: 1.75, minWidth: 0 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {label}
-      </Typography>
-      <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
-        {value}
-      </Typography>
-      {caption ? (
-        <Typography variant="caption" color="text.secondary">
-          {caption}
-        </Typography>
-      ) : null}
-    </Paper>
-  );
-}
-
-function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <Box sx={{ mb: 1.5 }}>
-      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-        {title}
-      </Typography>
-      {subtitle ? (
-        <Typography variant="body2" color="text.secondary">
-          {subtitle}
-        </Typography>
-      ) : null}
-    </Box>
-  );
+function referenceSummary(counts: Record<string, number>): string {
+  const parts = Object.entries(counts)
+    .filter(([key, count]) => count > 0 && key in REFERENCE_SHORT)
+    .map(([key, count]) => `${count} ${REFERENCE_SHORT[key as keyof typeof REFERENCE_SHORT]}`);
+  return parts.length ? `Reference used: ${parts.join(' · ')}.` : '';
 }
 
 function BreakdownTable({ breakdown }: { breakdown: Breakdown }) {
@@ -209,6 +138,7 @@ function ReportBody({ report }: { report: EngineeringPerformanceReport }) {
   const activeBreakdown =
     breakdowns.find((item) => item.dimension === dimension) ?? breakdowns[0] ?? null;
   const stageRows = ensureArray<StagePerformanceRow>(stage.rows);
+  const effort = ensureArray<EffortClassificationRow>(report.effort_by_classification);
   const basisLabel = summary.plan_basis === 'original' ? 'original estimate' : 'current estimate';
 
   return (
@@ -264,7 +194,17 @@ function ReportBody({ report }: { report: EngineeringPerformanceReport }) {
             label="Projects with stage plan"
             value={`${stage.projects_with_stage_plan} / ${summary.projects_completed}`}
           />
+          <KpiCard
+            label="Avg delivery variance (days)"
+            value={signedDays(summary.average_delivery_variance_days)}
+            caption={`vs original baseline · median ${signedDays(summary.median_delivery_variance_days)} · ${summary.delivered_early} early · ${summary.delivered_on_reference_date} on date · ${summary.delivered_late} late · ${summary.delivery_evaluable_projects} of ${summary.projects_completed} with a reference date`}
+          />
         </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          Delivery variance = actual completion − original approved baseline (negative is early). On-time
+          delivery above keeps its existing definition (current baseline).{' '}
+          {referenceSummary(summary.delivery_reference_counts)}
+        </Typography>
       </Paper>
 
       <Paper sx={{ p: 2 }}>
@@ -332,6 +272,80 @@ function ReportBody({ report }: { report: EngineeringPerformanceReport }) {
             stage milestone and are not in the stage rows.
           </Typography>
         ) : null}
+        {stageRows.length ? (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Stage estimate comparison
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {stage.complete_attribution_projects} project(s) with every hour attributed to a stage ·{' '}
+              {stage.partial_attribution_projects} partially attributed · {stage.unattributed_projects} without
+              attributed hours. {stage.eligibility_rule}
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Stage</TableCell>
+                    <TableCell align="right">Eligible projects</TableCell>
+                    <TableCell align="right">Avg variance h</TableCell>
+                    <TableCell align="right">Median variance h</TableCell>
+                    <TableCell align="right">Over estimate</TableCell>
+                    <TableCell align="right">Share of actual</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {stageRows.map((row) => (
+                    <TableRow key={row.stage} hover>
+                      <TableCell>{row.label}</TableCell>
+                      <TableCell align="right">{row.eligible_projects}</TableCell>
+                      <TableCell align="right" sx={{ color: varianceColor(row.average_variance_hours) }}>
+                        {signedHours(row.average_variance_hours)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: varianceColor(row.median_variance_hours) }}>
+                        {signedHours(row.median_variance_hours)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {row.eligible_projects
+                          ? `${row.projects_over_estimate} (${percent(row.percent_over_estimate)})`
+                          : '—'}
+                      </TableCell>
+                      <TableCell align="right">{percent(row.actual_share_percent)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="caption" color="text.secondary">
+              Variance = stage actual − approved stage estimate ({basisLabel}); positive means over.
+            </Typography>
+          </Box>
+        ) : null}
+        {effort.length ? (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Effort by classification
+            </Typography>
+            <Table size="small" sx={{ maxWidth: 480 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Task type category</TableCell>
+                  <TableCell align="right">Actual h</TableCell>
+                  <TableCell align="right">Share</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {effort.map((row) => (
+                  <TableRow key={row.key}>
+                    <TableCell>{row.label}</TableCell>
+                    <TableCell align="right">{hours(row.hours)}</TableCell>
+                    <TableCell align="right">{percent(row.percent)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        ) : null}
       </Paper>
 
       <Paper sx={{ p: 2 }}>
@@ -373,6 +387,7 @@ function ReportBody({ report }: { report: EngineeringPerformanceReport }) {
                 <TableCell>Completed</TableCell>
                 <TableCell>Target</TableCell>
                 <TableCell align="right">Days late</TableCell>
+                <TableCell align="right">Delivery variance</TableCell>
                 <TableCell align="right">Planned h</TableCell>
                 <TableCell align="right">Actual h</TableCell>
                 <TableCell align="right">Variance h</TableCell>
@@ -404,6 +419,12 @@ function ReportBody({ report }: { report: EngineeringPerformanceReport }) {
                   </TableCell>
                   <TableCell align="right">
                     {row.on_time == null ? '—' : row.on_time ? 'On time' : row.days_late}
+                  </TableCell>
+                  <TableCell align="right">
+                    {signedDays(row.delivery_variance_days)}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {REFERENCE_SHORT[row.delivery_reference_source]}
+                    </Typography>
                   </TableCell>
                   <TableCell align="right">
                     {hours(row.planned_hours)}
@@ -440,14 +461,9 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
     staleTime: 5 * 60 * 1000,
   });
   const fyStartMonth = settingsQuery.data?.company.financial_year_start_month ?? 4;
-  const today = useMemo(() => new Date(), []);
+  const period = usePerformancePeriod(fyStartMonth);
+  const { customRangeError } = period;
 
-  const [periodType, setPeriodType] = useState<PerformancePeriodType>('quarterly');
-  const [anchor, setAnchor] = useState(defaultAnchorForPeriod('monthly'));
-  const [fyYear, setFyYear] = useState<number | null>(null);
-  const [fyQuarter, setFyQuarter] = useState<number | null>(null);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
   const [planBasis, setPlanBasis] = useState<PerformancePlanBasis>('current');
   const [customerId, setCustomerId] = useState('');
   const [endCustomerId, setEndCustomerId] = useState('');
@@ -459,11 +475,6 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
   const [templateId, setTemplateId] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-
-  const selectedFyYear = fyYear ?? fyStartYearFor(today, fyStartMonth);
-  const selectedFyQuarter = fyQuarter ?? fyQuarterFor(today, fyStartMonth);
-  const currentFy = fyStartYearFor(today, fyStartMonth);
-  const fyYears = Array.from({ length: 7 }, (_, index) => currentFy + 1 - index);
 
   const customerQuery = useQuery({ queryKey: ['lookups', 'customers'], queryFn: fetchCustomers, staleTime: 300_000 });
   const teamsQuery = useQuery({
@@ -485,29 +496,9 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
   const lookupError =
     customerQuery.error ?? teamsQuery.error ?? usersQuery.error ?? typesQuery.error ?? templatesQuery.error;
 
-  const customRangeError =
-    periodType === 'custom'
-      ? !customStart || !customEnd
-        ? 'Choose a start and end date.'
-        : customEnd < customStart
-          ? 'End date must be on or after the start date.'
-          : null
-      : null;
-
   const params = useMemo<EngineeringPerformanceParams>(() => {
-    let periodParams: Partial<EngineeringPerformanceParams>;
-    if (periodType === 'custom') {
-      periodParams = { start_date: customStart, end_date: customEnd };
-    } else if (periodType === 'quarterly') {
-      periodParams = { anchor: toIsoDate(fyQuarterStart(selectedFyYear, selectedFyQuarter, fyStartMonth)) };
-    } else if (periodType === 'yearly') {
-      periodParams = { anchor: toIsoDate(new Date(selectedFyYear, fyStartMonth - 1, 1)) };
-    } else {
-      periodParams = { anchor };
-    }
     return {
-      period_type: periodType,
-      ...periodParams,
+      ...period.params,
       plan_basis: planBasis,
       customer_id: customerId || undefined,
       end_customer_id: endCustomerId || undefined,
@@ -520,9 +511,8 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
       include_archived: includeArchived,
     };
   }, [
-    periodType, customStart, customEnd, selectedFyYear, selectedFyQuarter, fyStartMonth, anchor, planBasis,
-    customerId, endCustomerId, teamId, designLeaderId, designerId, surfacerId, projectTypeId, templateId,
-    includeArchived,
+    period.params, planBasis, customerId, endCustomerId, teamId, designLeaderId, designerId, surfacerId,
+    projectTypeId, templateId, includeArchived,
   ]);
 
   const reportQuery = useQuery({
@@ -531,13 +521,6 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
     enabled: !customRangeError && settingsQuery.isFetched,
     placeholderData: keepPreviousData,
   });
-
-  const handlePeriodChange = (next: PerformancePeriodType) => {
-    setPeriodType(next);
-    if (next === 'weekly' || next === 'monthly') {
-      setAnchor((current) => syncAnchorForPeriodChange(next, current));
-    }
-  };
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -604,79 +587,7 @@ export function EngineeringPerformancePanel({ canExport, includeArchived }: Engi
               '& > *': { minWidth: 0 },
             }}
           >
-            <TextField
-              select
-              size="small"
-              label="Period"
-              value={periodType}
-              onChange={(event) => handlePeriodChange(event.target.value as PerformancePeriodType)}
-              fullWidth
-            >
-              {PERIOD_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            {periodType === 'weekly' || periodType === 'monthly' ? (
-              <ReportPeriodSelectors periodType={periodType} anchor={anchor} onAnchorChange={setAnchor} fluid />
-            ) : null}
-            {periodType === 'quarterly' || periodType === 'yearly' ? (
-              <TextField
-                select
-                size="small"
-                label="Financial year"
-                value={selectedFyYear}
-                onChange={(event) => setFyYear(Number(event.target.value))}
-                fullWidth
-              >
-                {fyYears.map((year) => (
-                  <MenuItem key={year} value={year}>
-                    {fyLabel(year, fyStartMonth)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            ) : null}
-            {periodType === 'quarterly' ? (
-              <TextField
-                select
-                size="small"
-                label="Quarter"
-                value={selectedFyQuarter}
-                onChange={(event) => setFyQuarter(Number(event.target.value))}
-                fullWidth
-              >
-                {[1, 2, 3, 4].map((quarter) => (
-                  <MenuItem key={quarter} value={quarter}>
-                    {fyQuarterLabel(quarter, fyStartMonth)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            ) : null}
-            {periodType === 'custom' ? (
-              <>
-                <TextField
-                  size="small"
-                  type="date"
-                  label="From"
-                  value={customStart}
-                  onChange={(event) => setCustomStart(event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  type="date"
-                  label="To"
-                  value={customEnd}
-                  onChange={(event) => setCustomEnd(event.target.value)}
-                  error={Boolean(customStart && customEnd && customEnd < customStart)}
-                  helperText={customRangeError ?? ' '}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  fullWidth
-                />
-              </>
-            ) : null}
+            <PerformancePeriodFields period={period} />
             <TextField
               select
               size="small"

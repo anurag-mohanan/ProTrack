@@ -89,6 +89,78 @@ export interface MetricDefinition {
   definition: string;
 }
 
+export interface StageHoursRow {
+  key: string;
+  label: string;
+  has_approved_estimate: boolean;
+  original_estimate_hours: Hours | null;
+  current_estimate_hours: Hours | null;
+  actual_hours: Hours | null;
+  percent_of_project_actual: Hours | null;
+  variance_hours: Hours | null;
+  variance: MetricValue;
+  utilization_percent: MetricValue;
+  remaining_hours: MetricValue;
+  data_quality: 'complete' | 'limited' | 'unavailable';
+  data_quality_notes: string[];
+}
+
+export type DeliveryStatus =
+  | 'early'
+  | 'on_time'
+  | 'late'
+  | 'overdue'
+  | 'not_due'
+  | 'no_target'
+  | 'completion_date_missing'
+  | 'not_applicable';
+
+export type DeliveryReference = 'original_baseline' | 'baseline_unverified' | 'current_due_date' | 'none';
+
+export interface ProjectDelivery {
+  status: DeliveryStatus;
+  reference_source: DeliveryReference;
+  reference_label: string;
+  reference_date: string | null;
+  original_baseline_completion_date: string | null;
+  current_baseline_completion_date: string | null;
+  current_due_date: string | null;
+  current_target_date: string | null;
+  actual_completion_date: string | null;
+  schedule_variance_days: number | null;
+  current_target_variance_days: number | null;
+  days_overdue: number | null;
+  target_moved_days: number | null;
+  baseline_revision_count: number;
+  original_due_date_preserved: boolean;
+}
+
+export interface MilestoneDelivery {
+  milestone_id: string;
+  name: string;
+  stage: string | null;
+  stage_label: string | null;
+  milestone_status: string;
+  is_required: boolean;
+  original_baseline_finish_date: string | null;
+  current_baseline_finish_date: string | null;
+  current_due_date: string | null;
+  current_target_date: string | null;
+  actual_completion_date: string | null;
+  reference_date: string | null;
+  reference_source: DeliveryReference;
+  status: DeliveryStatus;
+  schedule_variance_days: number | null;
+  days_overdue: number | null;
+}
+
+export interface DeliveryMetrics {
+  sign_convention: string;
+  project: ProjectDelivery;
+  milestones: MilestoneDelivery[];
+  milestone_status_counts: Record<string, number>;
+}
+
 export interface ProjectEngineeringMetrics {
   project_id: string;
   code: string | null;
@@ -123,19 +195,15 @@ export interface ProjectEngineeringMetrics {
   stage_attribution: {
     status: 'complete' | 'partial' | 'unavailable' | 'no_hours';
     coverage_percent: Hours | null;
+    total_hours: Hours | null;
     attributed_hours: Hours;
+    unattributed_hours: Hours;
     other_stage_hours: Hours;
     no_stage_hours: Hours;
     no_milestone_hours: Hours;
     invalid_milestone_hours: Hours;
-    rows: {
-      key: string;
-      label: string;
-      original_estimate_hours: Hours | null;
-      current_estimate_hours: Hours | null;
-      actual_hours: Hours;
-      variance_hours: Hours | null;
-    }[];
+    source: string;
+    rows: StageHoursRow[];
   };
   milestones: {
     total: number;
@@ -154,6 +222,7 @@ export interface ProjectEngineeringMetrics {
     baseline_revision_count: number;
     actual_completion_date: string | null;
   };
+  delivery: DeliveryMetrics;
   quote_linkage: {
     status: 'linked' | 'unlinked' | 'ambiguous';
     active_quote_count: number;

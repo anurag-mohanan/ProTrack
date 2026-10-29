@@ -298,7 +298,10 @@ def test_entry_on_another_projects_milestone_is_not_staged(client, session):
     body = _get(client, project_id)
     assert _d(body["stage_attribution"]["invalid_milestone_hours"]) == Decimal("6")
     assert body["stage_attribution"]["status"] == "unavailable"
-    assert body["stage_attribution"]["rows"] == []
+    rows = body["stage_attribution"]["rows"]
+    assert [row["key"] for row in rows] == ["preliminary", "intermediate", "final"]
+    assert all(row["actual_hours"] is None for row in rows)
+    assert all(row["data_quality"] == "unavailable" for row in rows)
     assert _d(body["actual"]["total_hours"]) == Decimal("6")
     assert "invalid_milestone_link" in {issue["code"] for issue in body["issues"]}
 

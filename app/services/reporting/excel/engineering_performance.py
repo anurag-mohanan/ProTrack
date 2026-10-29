@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
 from app.schemas.engineering_performance import EngineeringPerformanceReport
+from app.services.delivery_variance_service import REFERENCE_LABELS
 from app.services.reporting.excel.letterhead import write_report_letterhead
 from app.services.reporting.excel.styles import (
     BODY_BOLD_FONT,
@@ -28,6 +29,13 @@ from app.services.reporting.excel.styles import (
 )
 
 _REFERENCE_LABELS = {"baseline": "Baseline", "legacy_due_date": "Legacy due date", "none": "None"}
+_DELIVERY_STATUS_LABELS = {
+    "early": "Early",
+    "on_time": "On reference date",
+    "late": "Late",
+    "no_target": "No reference date",
+    "completion_date_missing": "Completion date missing",
+}
 _PLAN_SOURCE_LABELS = {
     "stage_estimates": "Stage estimates",
     "milestone_hours": "Milestone hours",
@@ -80,6 +88,13 @@ def _summary_sheet(workbook: Workbook, report: EngineeringPerformanceReport, com
         ("Milestones completed", f"{summary.milestones_completed} of {summary.milestones_total}"),
         ("Milestone on-time rate %", summary.milestone_on_time_rate),
         ("Projects without a plan", summary.projects_without_plan),
+        ("Avg delivery variance days (vs original baseline)", summary.average_delivery_variance_days),
+        ("Median delivery variance days", summary.median_delivery_variance_days),
+        (
+            "Early / on date / late (vs original baseline)",
+            f"{summary.delivered_early} / {summary.delivered_on_reference_date} / {summary.delivered_late}",
+        ),
+        ("Projects with a delivery reference", summary.delivery_evaluable_projects),
     ]
     for index, (label, value) in enumerate(kpis):
         r = row + (index // 4) * 3
@@ -115,17 +130,48 @@ def _stage_sheet(workbook: Workbook, report: EngineeringPerformanceReport) -> No
             f"{stage.projects_without_stage_plan} without (excluded from stage rows)."
         ),
     ).font = NOTES_FONT
-    headers = ["Stage", "Projects", "Original hours", "Current hours", "Actual hours", "Variance hours", "Variance %"]
+    headers = [
+        "Stage", "Projects", "Original hours", "Current hours", "Actual hours", "Variance hours",
+        "Variance %", "Eligible projects", "Avg variance h", "Median variance h",
+        "Projects over estimate", "% over estimate", "Share of actual %",
+    ]
     rows = [
-        [r.label, r.projects, r.original_hours, r.current_hours, r.actual_hours, r.variance_hours, r.variance_percent]
+        [
+            r.label, r.projects, r.original_hours, r.current_hours, r.actual_hours, r.variance_hours,
+            r.variance_percent, r.eligible_projects, r.average_variance_hours,
+            r.median_variance_hours, r.projects_over_estimate, r.percent_over_estimate,
+            r.actual_share_percent,
+        ]
         for r in stage.rows
     ]
-    end = _table(sheet, 3, headers, rows, {3, 4, 5, 6})
+    end = _table(sheet, 3, headers, rows, {3, 4, 5, 6, 9, 10})
     sheet.cell(
         row=end + 1,
         column=1,
         value=f"Hours on milestones outside the three stages: {stage.unstaged_actual_hours}",
     ).font = NOTES_FONT
+    sheet.cell(
+        row=end + 2,
+        column=1,
+        value=(
+            f"Stage attribution: {stage.complete_attribution_projects} complete, "
+            f"{stage.partial_attribution_projects} partial, {stage.unattributed_projects} "
+            f"without attributed hours. {stage.eligibility_rule}"
+        ),
+    ).font = NOTES_FONT
+    if report.effort_by_classification:
+        effort_rows = [[r.label, r.hours, r.percent] for r in report.effort_by_classification]
+        effort_start = end + 4
+        sheet.cell(row=effort_start, column=9, value="Effort by classification").font = SECTION_FONT
+        for offset, values in enumerate(
+            [["Classification", "Actual hours", "Share %"], *effort_rows], start=1
+        ):
+            for col, value in enumerate(values, start=9):
+                cell = sheet.cell(row=effort_start + offset, column=col, value=value)
+                if offset == 1:
+                    cell.font = BODY_BOLD_FONT
+                elif col == 10 and isinstance(value, (int, float)):
+                    cell.number_format = HOURS_FORMAT_2
     if rows:
         chart = BarChart()
         chart.title = "Stage hours: current plan vs actual"
@@ -163,7 +209,9 @@ def _projects_sheet(workbook: Workbook, report: EngineeringPerformanceReport) ->
         "Actual completion", "Reference completion", "Reference source", "On time", "Days late",
         "Original planned h", "Current planned h", "Planned h (report basis)", "Plan source",
         "Actual h", "Variance h", "Variance %", "Stage planned", "Milestones completed",
-        "Milestones on time",
+        "Milestones on time", "Original baseline completion", "Current baseline completion",
+        "Delivery reference", "Delivery reference date", "Delivery status",
+        "Delivery variance days", "Stage attribution",
     ]
     rows = [
         [
@@ -177,6 +225,10 @@ def _projects_sheet(workbook: Workbook, report: EngineeringPerformanceReport) ->
             _PLAN_SOURCE_LABELS.get(p.plan_source, p.plan_source), p.actual_hours,
             p.variance_hours, p.variance_percent, "Yes" if p.stage_planned else "No",
             f"{p.milestones_completed}/{p.milestones_total}", p.milestones_on_time,
+            p.original_baseline_completion_date, p.current_baseline_completion_date,
+            REFERENCE_LABELS.get(p.delivery_reference_source, p.delivery_reference_source),
+            p.delivery_reference_date, _DELIVERY_STATUS_LABELS.get(p.delivery_status or "", "—"),
+            p.delivery_variance_days, p.stage_attribution_status.replace("_", " "),
         ]
         for p in report.projects
     ]

@@ -37,6 +37,7 @@ import {
   ROLES,
 } from '../../../utils/permissions';
 import { ProjectStagePlanPanel } from './ProjectStagePlanPanel';
+import { ProjectEngineeringMetricsPanel } from './ProjectEngineeringMetricsPanel';
 import { formatDisplayValue } from '../../../utils/format';
 import { isActiveProjectForHealth } from '../../../utils/projectHealth';
 import { ProjectCommunicationsPanel } from './ProjectCommunicationsPanel';
@@ -274,6 +275,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
       {tab === 'overview' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <ProjectWorkorderDetailsPanel project={project} canEdit={canEditMilestones} />
+          <ProjectEngineeringMetricsPanel projectId={projectId} />
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
               Execution timeline

@@ -119,7 +119,7 @@ All commands were run from the repository root on Windows (Python 3.13 / minicon
 
 | Check | Command | Result |
 |---|---|---|
-| Backend test suite | `python -m pytest -q -p no:warnings -p no:cacheprovider --tb=line -p no:logging tests` | **1208 passed, 12 failed, 1 skipped** (37 min 31 s) — Confirmed (run) |
+| Backend test suite | `python -m pytest -q -p no:warnings -p no:cacheprovider --tb=line -p no:logging tests` | **1208 passed, 12 failed, 1 skipped** (37 min 31 s) — Confirmed (run). *Note:* this run used the default `DATABASE_URL`, so app startup inside the tests wrote to `protrack.db` (see §16 correction). |
 | Frontend type-check | `cd frontend; npx tsc -b` | **Pass, 0 errors** |
 | Frontend build | `cd frontend; npm run build` | **Pass** (`vite build`) |
 | Frontend lint | `cd frontend; npx eslint src` | **163 errors, 56 warnings** — 86 `react-hooks/set-state-in-effect`, 56 `exhaustive-deps`, 35 `only-export-components`, 21 `preserve-manual-memoization`, 9 `refs`, 5 unused vars. All are pre-existing style/hook rules; no new code in this audit. |
@@ -614,7 +614,7 @@ Each item lists: problem/evidence · reuse · changes · migration · dependenci
 - Tests: a receivables test with a linked project; an `/ai/health` smoke test.
 - Risk/priority: P0.
 
-**B0.5 Expand CI** to the full backend suite plus frontend type-check and build. Fix or quarantine the 12 known failures, each with a reason.
+**B0.5 Expand CI** to the full backend suite plus frontend type-check and build. Fix or quarantine the 12 known failures, each with a reason. First isolate the test harness from the dev database: set `DATABASE_URL` to a temporary file in `tests/conftest.py`. Also make `phase35_overhead_team_merge_schema_sync` idempotent (found in Phase 1 Step 1).
 - Risk/priority: P0.
 
 ### Phase 1 — Quote-to-Delivery Intelligence (in this order)
@@ -734,7 +734,7 @@ Item 1 (quote linkage) follows next, once the owner decides quote-status semanti
 | Startup/API failures recorded | Passed (§3) |
 | Existing failures distinguished from new findings | Passed (§3.2) |
 | No unsupported test claims | Passed |
-| No business records deleted/reset/overwritten | Passed — real `protrack.db` never opened for writing; only copies were used |
+| No business records deleted/reset/overwritten | **Corrected (Phase 1 Step 1):** the audit tools only used copies, but the full pytest run itself writes to `protrack.db`, because the test client runs app startup against the default `DATABASE_URL`. No rows were added or removed and no business values changed. The pre-existing phase35 startup step appended its merge suffix again to one inactive team's description/notes and touched `updated_at` on 3 reference tables. See `docs/PHASE1_STEP1_ENGINEERING_METRICS.md` §6. |
 | No destructive migration applied | Passed |
 | No fabricated data | Passed |
 | Authoritative entities identified | Passed (§5) |

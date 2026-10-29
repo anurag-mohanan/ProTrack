@@ -1,13 +1,24 @@
 import { apiClient } from './client';
 import type { StageHoursInput } from '../types/Project';
-import type { ProjectStagePlan } from '../types/projectPlanning';
+import type { ProjectEngineeringMetrics, ProjectStagePlan } from '../types/projectPlanning';
 
 export const projectPlanningQueryKeys = {
   stagePlan: (projectId: string) => ['projects', projectId, 'stage-plan'] as const,
+  engineeringMetrics: (projectId: string) =>
+    ['projects', projectId, 'engineering-metrics'] as const,
 };
 
 export async function fetchProjectStagePlan(projectId: string): Promise<ProjectStagePlan> {
   const { data } = await apiClient.get<ProjectStagePlan>(`/projects/${projectId}/stage-plan`);
+  return data;
+}
+
+export async function fetchProjectEngineeringMetrics(
+  projectId: string,
+): Promise<ProjectEngineeringMetrics> {
+  const { data } = await apiClient.get<ProjectEngineeringMetrics>(
+    `/projects/${projectId}/engineering-metrics`,
+  );
   return data;
 }
 

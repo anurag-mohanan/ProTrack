@@ -69,6 +69,105 @@ export interface BaselineRevision {
   revised_at: string;
 }
 
+export type MetricStatus = 'available' | 'unavailable' | 'not_applicable';
+
+export interface MetricValue {
+  value: Hours | null;
+  status: MetricStatus;
+  reason: string | null;
+}
+
+export interface DataQualityIssue {
+  code: string;
+  severity: 'info' | 'warning';
+  message: string;
+}
+
+export interface MetricDefinition {
+  key: string;
+  label: string;
+  definition: string;
+}
+
+export interface ProjectEngineeringMetrics {
+  project_id: string;
+  code: string | null;
+  tool_number: string | null;
+  part_description: string | null;
+  execution_status: string;
+  data_quality_status: 'available' | 'available_with_limitations' | 'unavailable';
+  estimate: {
+    quoted_hours: Hours | null;
+    original_estimate_hours: Hours | null;
+    current_estimate_hours: Hours | null;
+    estimate_source: 'stage_estimates' | 'milestone_hours' | 'quoted_hours' | 'none';
+    estimate_source_label: string;
+    revision_count: number;
+    last_revised_at: string | null;
+  };
+  actual: {
+    status: 'recorded' | 'none_recorded' | 'missing';
+    total_hours: Hours | null;
+    entry_count: number;
+    before_completion_hours: Hours;
+    post_completion_hours: Hours;
+    approved_hours: Hours;
+    submitted_hours: Hours;
+    draft_hours: Hours;
+    rejected_hours: Hours;
+  };
+  variance_hours: MetricValue;
+  utilization_percent: MetricValue;
+  remaining_hours: MetricValue;
+  original_variance_hours: MetricValue;
+  stage_attribution: {
+    status: 'complete' | 'partial' | 'unavailable' | 'no_hours';
+    coverage_percent: Hours | null;
+    attributed_hours: Hours;
+    other_stage_hours: Hours;
+    no_stage_hours: Hours;
+    no_milestone_hours: Hours;
+    invalid_milestone_hours: Hours;
+    rows: {
+      key: string;
+      label: string;
+      original_estimate_hours: Hours | null;
+      current_estimate_hours: Hours | null;
+      actual_hours: Hours;
+      variance_hours: Hours | null;
+    }[];
+  };
+  milestones: {
+    total: number;
+    completed: number;
+    open: number;
+    skipped: number;
+    open_required: number;
+    open_without_target_date: number;
+    open_overdue: number;
+    completed_with_completion_date: number;
+    with_baseline_finish_date: number;
+    with_original_planned_hours: number;
+    current_target_date: string | null;
+    baseline_completion_date: string | null;
+    original_baseline_completion_date: string | null;
+    baseline_revision_count: number;
+    actual_completion_date: string | null;
+  };
+  quote_linkage: {
+    status: 'linked' | 'unlinked' | 'ambiguous';
+    active_quote_count: number;
+    details_visible: boolean;
+    quote_reference: string | null;
+    quote_version: number | null;
+    quote_revision: string | null;
+    quote_hours: Hours | null;
+  };
+  issues: DataQualityIssue[];
+  definitions: MetricDefinition[];
+  calculated_at: string;
+}
+
 export interface ProjectStagePlan {
   project_id: string;
   start_date: string | null;

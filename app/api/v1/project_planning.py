@@ -10,9 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import get_db
-from app.core.access_control import SPECIAL_APPROVE_BASELINES, SPECIAL_REVISE_ESTIMATES
+from app.core.access_control import (
+    MODULE_FINANCIAL_PLANNING,
+    SPECIAL_APPROVE_BASELINES,
+    SPECIAL_REVISE_ESTIMATES,
+)
 from app.core.exceptions import ProTrackValidationError
-from app.core.permissions import can_read_project, can_update_project, user_holds_special
+from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
+from app.core.permissions import (
+    can_read_project,
+    can_update_project,
+    get_role_name,
+    user_holds_special,
+)
 from app.models.enums import PLANNED_STAGE_LABELS, ActivityAction, EntityType
 from app.models.models import (
     Milestone,
@@ -21,6 +31,7 @@ from app.models.models import (
     ProjectEstimateRevision,
     User,
 )
+from app.schemas.engineering_metrics import ProjectEngineeringMetrics
 from app.schemas.project_planning import (
     BaselineRevisionCreate,
     BaselineRevisionRead,
@@ -33,6 +44,7 @@ from app.schemas.project_planning import (
     StagePlanStage,
 )
 from app.services.activity_service import log_activity
+from app.services.engineering_metrics_service import build_project_engineering_metrics
 from app.services.milestone_workspace_service import recalculate_project_planned_hours
 from app.services.project_calculation_service import recalculate_project
 from app.services.project_estimate_service import (
@@ -264,6 +276,24 @@ def get_stage_plan(
     db.commit()
     db.refresh(project)
     return _build_plan(db, project)
+
+
+@router.get("/{project_id}/engineering-metrics", response_model=ProjectEngineeringMetrics)
+def get_engineering_metrics(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = _readable(db, current_user, project_id)
+    finance_visible = user_has_module_action(
+        current_user,
+        get_role_name(db, current_user),
+        MODULE_FINANCIAL_PLANNING,
+        MODULE_ACTION_VIEW,
+    )
+    return build_project_engineering_metrics(
+        db, project, finance_details_visible=finance_visible
+    )
 
 
 @router.post("/{project_id}/stage-estimates", response_model=ProjectStagePlanRead)

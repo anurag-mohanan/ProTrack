@@ -19,7 +19,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
@@ -34,11 +34,9 @@ from app.models.models import (
     Customer,
     Milestone,
     Project,
-    ProjectStageEstimate,
     ProjectTemplate,
     ProjectType,
     Team,
-    TimesheetEntry,
     User,
 )
 from app.schemas.engineering_performance import (
@@ -52,6 +50,12 @@ from app.schemas.engineering_performance import (
     ProjectPerformanceRow,
     StagePerformance,
     StagePerformanceRow,
+)
+from app.services.engineering_metrics_service import (
+    StageHourBuckets,
+    resolve_estimate,
+    stage_estimates_by_project,
+    stage_hour_buckets,
 )
 from app.services.project_calculation_service import batch_calculate_hours
 from app.services.reporting.periods import financial_period_bounds
@@ -271,35 +275,6 @@ def _apply_filters(stmt, filters: PerformanceFilters):
     return stmt
 
 
-def _stage_estimates(db: Session, project_ids: list[UUID]) -> dict[UUID, list[ProjectStageEstimate]]:
-    result: dict[UUID, list[ProjectStageEstimate]] = defaultdict(list)
-    if not project_ids:
-        return result
-    for row in db.scalars(
-        select(ProjectStageEstimate).where(ProjectStageEstimate.project_id.in_(project_ids))
-    ):
-        result[row.project_id].append(row)
-    return result
-
-
-def _stage_actuals(db: Session, project_ids: list[UUID]) -> dict[UUID, dict[ProjectStage | None, Decimal]]:
-    result: dict[UUID, dict[ProjectStage | None, Decimal]] = defaultdict(dict)
-    if not project_ids:
-        return result
-    rows = db.execute(
-        select(TimesheetEntry.project_id, Milestone.project_stage, func.sum(TimesheetEntry.hours))
-        .outerjoin(Milestone, Milestone.id == TimesheetEntry.milestone_id)
-        .where(
-            TimesheetEntry.project_id.in_(project_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
-        .group_by(TimesheetEntry.project_id, Milestone.project_stage)
-    ).all()
-    for project_id, stage, hours in rows:
-        result[project_id][stage] = Decimal(str(hours or 0))
-    return result
-
-
 def _milestones(db: Session, project_ids: list[UUID]) -> dict[UUID, list[Milestone]]:
     result: dict[UUID, list[Milestone]] = defaultdict(list)
     if not project_ids:
@@ -312,50 +287,16 @@ def _milestones(db: Session, project_ids: list[UUID]) -> dict[UUID, list[Milesto
 def _build_facts(db: Session, projects: list[Project]) -> list[_ProjectFacts]:
     ids = [project.id for project in projects]
     hours = batch_calculate_hours(db, projects)
-    estimates = _stage_estimates(db, ids)
-    stage_actuals = _stage_actuals(db, ids)
+    estimates = stage_estimates_by_project(db, ids)
+    buckets = stage_hour_buckets(db, ids)
     milestones = _milestones(db, ids)
     facts: list[_ProjectFacts] = []
     for project in projects:
-        rows = estimates.get(project.id, [])
-        stage_original = {row.stage: Decimal(str(row.original_hours)) for row in rows}
-        stage_current = {row.stage: Decimal(str(row.current_hours)) for row in rows}
         milestone_rows = milestones.get(project.id, [])
-        other_planned = sum(
-            (
-                Decimal(str(m.planned_hours or 0))
-                for m in milestone_rows
-                if m.project_stage not in PLANNED_STAGES and m.status not in _SKIPPED_MILESTONES
-            ),
-            Decimal("0"),
-        )
-        quoted = Decimal(str(project.quoted_hours)) if project.quoted_hours else None
-        milestone_planned = Decimal(str(project.current_planned_hours or 0))
-        if rows:
-            original: Decimal | None = sum(stage_original.values(), Decimal("0")) + other_planned
-            current: Decimal | None = sum(stage_current.values(), Decimal("0")) + other_planned
-            source = "stage_estimates"
-        elif milestone_planned > 0:
-            original = quoted if quoted and quoted > 0 else milestone_planned
-            current = milestone_planned
-            source = "milestone_hours"
-        elif quoted and quoted > 0:
-            original = quoted
-            current = quoted
-            source = "quoted_hours"
-        else:
-            original = None
-            current = None
-            source = "none"
-
-        actuals = stage_actuals.get(project.id, {})
-        stage_actual = {
-            stage: actuals.get(stage, Decimal("0")) for stage in PLANNED_STAGES
-        }
-        unstaged = sum(
-            (value for stage, value in actuals.items() if stage not in PLANNED_STAGES),
-            Decimal("0"),
-        )
+        estimate = resolve_estimate(project, estimates.get(project.id, []), milestone_rows)
+        bucket = buckets.get(project.id, StageHourBuckets())
+        stage_actual = dict(bucket.stages)
+        unstaged = bucket.unattributed
 
         if project.baseline_completion_date is not None:
             reference, reference_source = project.baseline_completion_date, "baseline"
@@ -381,12 +322,12 @@ def _build_facts(db: Session, projects: list[Project]) -> list[_ProjectFacts]:
             _ProjectFacts(
                 project=project,
                 completed_on=project.completed_at.date(),
-                original=original,
-                current=current,
-                plan_source=source,
+                original=estimate.original,
+                current=estimate.current,
+                plan_source=estimate.source,
                 actual=Decimal(str(hours[project.id].actual)),
-                stage_original=stage_original,
-                stage_current=stage_current,
+                stage_original=estimate.stage_original,
+                stage_current=estimate.stage_current,
                 stage_actual=stage_actual,
                 unstaged_actual=unstaged,
                 reference=reference,

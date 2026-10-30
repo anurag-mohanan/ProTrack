@@ -317,6 +317,8 @@ class ActivityAction(enum.Enum):
     it_assignment_reviewed = "it_assignment_reviewed"
     it_sharing_policy_updated = "it_sharing_policy_updated"
     it_setup_assigned = "it_setup_assigned"
+    skill_profile_changed = "skill_profile_changed"
+    skill_taxonomy_changed = "skill_taxonomy_changed"
 
 
 class NotificationType(enum.Enum):

@@ -16,6 +16,7 @@ from app.models.foundation import (
     Skill,
 )
 from app.models.models import Customer, Stream, TaskType
+from app.services.skills.naming import normalize_skill_name, skill_name_keys
 
 
 def _sqlite_has_column(engine: Engine, table_name: str, column_name: str) -> bool:
@@ -163,9 +164,12 @@ def ensure_phase7_seed_data(engine: Engine) -> None:
             if name not in existing_disciplines:
                 session.add(EngineeringDiscipline(name=name))
 
-        existing_skills = set(session.scalars(select(Skill.name)).all())
+        # Renamed or aliased skills must not be re-seeded under their old name.
+        existing_skill_keys: set[str] = set()
+        for skill_name, skill_aliases in session.execute(select(Skill.name, Skill.aliases)).all():
+            existing_skill_keys |= skill_name_keys(skill_name, skill_aliases)
         for name, category in SKILL_SEED:
-            if name not in existing_skills:
+            if normalize_skill_name(name) not in existing_skill_keys:
                 session.add(Skill(name=name, category=category))
 
         mold_stream = session.scalar(select(Stream).where(Stream.name == "Mold Design"))

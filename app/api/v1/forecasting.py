@@ -8,20 +8,9 @@ from fastapi import HTTPException, status
 
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
-from app.core.access_control import (
-    MODULE_FINANCIAL_PLANNING,
-    MODULE_RESOURCE_PLANNING,
-    SPECIAL_VIEW_RESOURCE_PLANNING,
-    normalize_role_name,
-    user_has_module,
-    user_has_special,
-)
+from app.core.access_control import MODULE_FINANCIAL_PLANNING
 from app.core.module_actions import MODULE_ACTION_VIEW, user_has_module_action
-from app.core.permissions import (
-    can_view_reports,
-    can_view_resource_planning,
-    get_role_name,
-)
+from app.core.permissions import can_view_reports, get_role_name
 from app.core.team_access import project_visibility_clause, resolve_team_scope
 from app.models.models import Customer, Team, User
 from app.schemas.forecasting import (
@@ -38,17 +27,13 @@ from app.services.reporting.report_scope import (
     ReportScopeForbidden,
     resolve_report_scope,
 )
+from app.services.skills.access import can_view_capacity
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"], dependencies=[Depends(get_current_user)])
 
 
 def _can_view_capacity(db: Session, user: User) -> bool:
-    if can_view_resource_planning(db, user):
-        return True
-    role = normalize_role_name(get_role_name(db, user))
-    return user_has_module(user, role, MODULE_RESOURCE_PLANNING) or user_has_special(
-        user, role, SPECIAL_VIEW_RESOURCE_PLANNING
-    )
+    return can_view_capacity(db, user)
 
 
 def _can_view_finance(db: Session, user: User) -> bool:

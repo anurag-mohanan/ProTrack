@@ -85,6 +85,7 @@ const HrProcessAuditPage = lazy(() =>
   })),
 );
 const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage'));
+const EngineeringSkillsPage = lazy(() => import('./pages/EngineeringSkillsPage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -430,6 +431,14 @@ export default function App() {
                       />
                     </Route>
                     <Route path="/admin/organization-chart" element={<Navigate to="/organization" replace />} />
+                    <Route
+                      path="/skills"
+                      element={
+                        <Suspense fallback={<LoadingState message="Loading engineering skills…" />}>
+                          <EngineeringSkillsPage />
+                        </Suspense>
+                      }
+                    />
                     <Route element={<ModuleRoute module={MODULE_FINANCIAL_PLANNING} />}>
                       <Route
                         path="/finance"

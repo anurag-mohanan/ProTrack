@@ -54,8 +54,10 @@ GAP_REASON = (
     "completion forecast exists."
 )
 SKILL_REASON = (
-    "Not calculated: no user has a verified skill record and projects do not record required "
-    "skills or software. Skills are not inferred from history."
+    "Not calculated by period: verified skills and project skill requirements are recorded in "
+    "Engineering Skills, but remaining work is not phased, so skill demand cannot be spread over "
+    "periods. Use the Engineering Skills candidate finder for per-project suitability. Skills are "
+    "not inferred from history."
 )
 PHASING_REASON = (
     "Approved remaining hours are shown as an unphased total; they are not spread over periods "

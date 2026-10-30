@@ -286,6 +286,9 @@ from app.db.phase107_ticket_workflow_schema_sync import (
 from app.db.phase108_engineering_management_schema_sync import (
     ensure_phase108_engineering_management_foundation,
 )
+from app.db.phase109_engineering_skills_schema_sync import (
+    ensure_phase109_engineering_skills_foundation,
+)
 from app.db.phase106_shift_aware_allocation_schema_sync import (
     ensure_phase106_shift_aware_allocation_foundation,
 )
@@ -371,6 +374,11 @@ async def lifespan(app: FastAPI):
         (
             "phase108_engineering_management",
             ensure_phase108_engineering_management_foundation,
+        ),
+        # Before phase7: its skill seed inserts through the ORM, which writes the new columns.
+        (
+            "phase109_engineering_skills",
+            ensure_phase109_engineering_skills_foundation,
         ),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),

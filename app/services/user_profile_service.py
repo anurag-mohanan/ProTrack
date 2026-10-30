@@ -19,7 +19,7 @@ def get_user_profile(db: Session, user: User) -> UserProfileRead:
     prefs = get_or_create_user_preferences(db, user)
 
     skills = db.scalars(
-        select(UserSkill).where(UserSkill.user_id == user.id)
+        select(UserSkill).where(UserSkill.user_id == user.id, UserSkill.status != "archived")
     ).all()
     skill_rows = [
         UserProfileSkill(

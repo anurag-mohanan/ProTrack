@@ -66,7 +66,7 @@ from app.services.working_model.resolver import resolve_working_models_for_proje
 
 logger = logging.getLogger("protrack.control_tower")
 
-RULES_VERSION = "1"
+RULES_VERSION = "2"
 RUN_ABANDON_AFTER = timedelta(minutes=15)
 
 SEVERITIES = ("critical", "high", "medium", "info")
@@ -81,6 +81,7 @@ CATEGORY_LABELS = {
     "effort": "Effort vs estimate",
     "delivery": "Project delivery",
     "data_quality": "Data quality",
+    "capability": "Skills capability",
 }
 OWNER_BASIS_LABELS = {
     "milestone_assignee": "Milestone assignee",
@@ -240,6 +241,49 @@ RULES: dict[str, RuleDefinition] = {
             recommended_action="Approve a baseline so future changes are recorded as revisions.",
             risk_type=ProjectRiskType.overdue,
         ),
+        RuleDefinition(
+            rule_id="skill_requirement_uncovered",
+            title="Required skill has no verified holder",
+            category="capability",
+            kind="risk",
+            severity_rule="Medium. Capability findings never mark a project as delayed.",
+            condition=(
+                "A mandatory skill requirement recorded on the open project has no active employee with a "
+                "current verified level at or above the required minimum. Self-declared or unverified skills "
+                "do not count. A missing skill record is not proof that nobody has the skill."
+            ),
+            recommended_action=(
+                "Ask managers to assess the people likely to hold the skill, or plan training or external "
+                "support. Review the requirement if it is no longer needed."
+            ),
+        ),
+        RuleDefinition(
+            rule_id="skill_no_confirmed_candidate",
+            title="No single verified candidate for all mandatory skills",
+            category="capability",
+            kind="risk",
+            severity_rule="Medium.",
+            condition=(
+                "Each mandatory requirement on the open project has at least one verified holder, but no "
+                "single active employee is verified at the required level for all of them."
+            ),
+            recommended_action=(
+                "Plan the work as a team across the verified holders, or assess further people. "
+                "Use the candidate finder to check availability."
+            ),
+        ),
+        RuleDefinition(
+            rule_id="skill_requirement_single_specialist",
+            title="Required skill depends on one verified holder",
+            category="capability",
+            kind="risk",
+            severity_rule="Informational.",
+            condition=(
+                "A mandatory skill requirement on the open project has exactly one active employee verified "
+                "at or above the required level."
+            ),
+            recommended_action="Consider knowledge transfer or a development plan for a second holder.",
+        ),
     )
 }
 
@@ -273,7 +317,8 @@ DEFERRED_RULES: tuple[DeferredRuleRead, ...] = (
         title="Resource bottleneck",
         reason=(
             "There is no leave model, no allocation model and no validated demand. Workload uses heuristic "
-            "16 h / 40 h floors and fixed role shares, and skills are not used, so capacity cannot be judged reliably."
+            "16 h / 40 h floors and fixed role shares, and verified skills only cover projects with recorded "
+            "requirements, so capacity cannot be judged reliably."
         ),
     ),
 )
@@ -807,7 +852,86 @@ def detect_all(db: Session, today: date) -> tuple[list[Project], list[Detection]
         project_inputs = inputs[project.id]
         metrics = compute_project_metrics(project, project_inputs, finance_details_visible=False, today=today)
         detections.extend(evaluate_project(project, metrics, project_inputs.milestone_rows, allowed[project.id]))
+    detections.extend(capability_detections(db, projects, today))
     return projects, detections
+
+
+_CAPABILITY_CAVEAT = (
+    "Only verified skill records count; a missing record does not prove that nobody has the skill. "
+    "This finding does not mean the project is delayed."
+)
+
+
+def capability_detections(db: Session, projects: list[Project], today: date) -> list[Detection]:
+    """Org-wide verified coverage of each open project's recorded skill requirements (counts only, no names)."""
+    from app.services.skills.gaps import requirement_coverage
+
+    coverage = requirement_coverage(db, projects, today)
+    detections: list[Detection] = []
+    for project in projects:
+        mandatory = [r for r in coverage.get(project.id, []) if r["is_mandatory"]]
+        if not mandatory:
+            continue
+        owner_id, owner_basis = _project_owner(project)
+
+        def lines(rows: list[dict]) -> list[tuple[str, str]]:
+            return [
+                (f"{r['skill_name']} (level {r['min_level']}+)", f"{r['verified_holders']} verified, {r['claimed_unverified']} unverified claim(s)")
+                for r in rows
+            ]
+
+        uncovered = [r for r in mandatory if r["verified_holders"] == 0]
+        if uncovered:
+            names = ", ".join(r["skill_name"] for r in uncovered)
+            detections.append(
+                Detection(
+                    rule_id="skill_requirement_uncovered",
+                    project_id=project.id,
+                    severity="medium",
+                    title=f"{len(uncovered)} required skill(s) have no verified holder",
+                    explanation=f"No active employee is verified at the required level for: {names}. {_CAPABILITY_CAVEAT}",
+                    metrics={"uncovered_skill_ids": sorted(str(r["skill_id"]) for r in uncovered), "mandatory_requirements": len(mandatory)},
+                    evidence=lines(uncovered),
+                    owner_user_id=owner_id,
+                    owner_basis=owner_basis,
+                )
+            )
+            continue
+        common = set.intersection(*(set(r["verified_holder_ids"]) for r in mandatory))
+        if len(mandatory) > 1 and not common:
+            detections.append(
+                Detection(
+                    rule_id="skill_no_confirmed_candidate",
+                    project_id=project.id,
+                    severity="medium",
+                    title="No single verified candidate covers all mandatory skills",
+                    explanation=(
+                        f"Each of the {len(mandatory)} mandatory skills has a verified holder, but nobody is verified "
+                        f"for all of them. {_CAPABILITY_CAVEAT}"
+                    ),
+                    metrics={"mandatory_requirements": len(mandatory)},
+                    evidence=lines(mandatory),
+                    owner_user_id=owner_id,
+                    owner_basis=owner_basis,
+                )
+            )
+        single = [r for r in mandatory if r["verified_holders"] == 1]
+        if single:
+            names = ", ".join(r["skill_name"] for r in single)
+            detections.append(
+                Detection(
+                    rule_id="skill_requirement_single_specialist",
+                    project_id=project.id,
+                    severity="info",
+                    title=f"{len(single)} required skill(s) depend on one verified holder",
+                    explanation=f"Only one active employee is verified at the required level for: {names}. {_CAPABILITY_CAVEAT}",
+                    metrics={"single_holder_skill_ids": sorted(str(r["skill_id"]) for r in single)},
+                    evidence=lines(single),
+                    owner_user_id=owner_id,
+                    owner_basis=owner_basis,
+                )
+            )
+    return detections
 
 
 def _start_run(db: Session, *, trigger: str, user_id: UUID | None, today: date) -> ProjectRiskEvaluationRun:

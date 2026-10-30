@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 Severity = Literal["critical", "high", "medium", "info"]
-Category = Literal["schedule", "effort", "delivery", "data_quality"]
+Category = Literal["schedule", "effort", "delivery", "data_quality", "capability"]
 FindingStatus = Literal["active", "not_assessable", "resolved"]
 ControlTowerView = Literal["risks", "data_quality", "resolved"]
 ControlTowerState = Literal["never_evaluated", "running", "last_run_failed", "stale", "ok"]

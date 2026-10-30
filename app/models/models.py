@@ -307,7 +307,7 @@ class User(Base, TimestampMixin, TenantMixin):
         foreign_keys="PerformanceReviewCycle.created_by_id",
     )
     user_skills: Mapped[list["UserSkill"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade="all, delete-orphan", foreign_keys="UserSkill.user_id"
     )
     stream: Mapped[Optional["Stream"]] = relationship(
         foreign_keys="User.stream_id",
@@ -2414,6 +2414,14 @@ from app.models.enterprise import (  # noqa: E402, F401
 from app.models.training import (  # noqa: E402, F401
     TrainingAssignment,
     TrainingCourse,
+)
+from app.models.skills import (  # noqa: E402, F401
+    ProjectSkillRequirement,
+    SkillDevelopmentPlan,
+    SkillProficiencyLevel,
+    SkillRelationship,
+    UserSkillEvent,
+    UserSkillEvidence,
 )
 from app.models.commercial import (  # noqa: E402, F401
     FeatureFlag,

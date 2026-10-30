@@ -42,6 +42,7 @@ from app.api.v1 import (
     roles,
     security,
     settings,
+    skills,
     system,
     tickets,
     timesheet_entries,
@@ -170,6 +171,7 @@ api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(control_tower.router)
 api_router.include_router(forecasting.router)
+api_router.include_router(skills.router)
 api_router.include_router(finance.router)
 api_router.include_router(hr.router)
 api_router.include_router(onboarding.router)

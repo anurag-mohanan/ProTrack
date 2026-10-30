@@ -218,10 +218,27 @@ class Skill(Base, TimestampMixin, TenantMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # --- Engineering skills taxonomy (phase 109) ---
+    kind: Mapped[Optional[str]] = mapped_column(String(30))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    # JSON list of alternative names; checked together with ``name`` for duplicates.
+    aliases: Mapped[Optional[str]] = mapped_column(Text)
+    discipline_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engineering_disciplines.id"), nullable=True
+    )
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True
+    )
+    is_critical: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    min_verified_coverage: Mapped[Optional[int]] = mapped_column(Integer)
+    specialist_level: Mapped[Optional[int]] = mapped_column(Integer)
+    reassessment_months: Mapped[Optional[int]] = mapped_column(Integer)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     user_skills: Mapped[list["UserSkill"]] = relationship(
         back_populates="skill", cascade="all, delete-orphan"
     )
+    discipline: Mapped[Optional[EngineeringDiscipline]] = relationship()
 
 
 class UserSkill(Base, TimestampMixin, TenantMixin):
@@ -242,8 +259,32 @@ class UserSkill(Base, TimestampMixin, TenantMixin):
         nullable=False,
         default=SkillLevel.intermediate,
     )
+    # --- Structured skill profile (phase 109). ``proficiency`` above is the legacy
+    # four-value field; levels below are on the configurable 1–5 framework. ---
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="self_declared")
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="self")
+    declared_level: Mapped[Optional[int]] = mapped_column(Integer)
+    verified_level: Mapped[Optional[int]] = mapped_column(Integer)
+    verification_method: Mapped[Optional[str]] = mapped_column(String(30))
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    verified_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    last_assessed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_assessed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    years_experience: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 1))
+    last_used_on: Mapped[Optional[date]] = mapped_column(Date)
+    employee_note: Mapped[Optional[str]] = mapped_column(Text)
+    assessment_feedback: Mapped[Optional[str]] = mapped_column(Text)
+    confidential_notes: Mapped[Optional[str]] = mapped_column(Text)
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
-    user: Mapped["User"] = relationship(back_populates="user_skills")
+    user: Mapped["User"] = relationship(back_populates="user_skills", foreign_keys=[user_id])
     skill: Mapped[Skill] = relationship(back_populates="user_skills")
 
 

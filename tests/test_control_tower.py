@@ -408,7 +408,7 @@ def test_api_views_filters_pagination_and_summary(client, session):
     summary = risks["summary"]
     assert summary["open_risks"] >= 3 and summary["projects_with_risks"] >= 1
     assert {row["severity"] for row in summary["by_severity"]} == {"critical", "high", "medium"}
-    assert {row["category"] for row in summary["by_category"]} == {"schedule", "effort", "delivery", "data_quality"}
+    assert {row["category"] for row in summary["by_category"]} == {"schedule", "effort", "delivery", "data_quality", "capability"}
     assert {r["rule_id"] for r in risks["deferred_rules"]} == {
         "estimate_overrun_forecast", "delivery_forecast_risk", "stage_overrun", "resource_bottleneck",
     }

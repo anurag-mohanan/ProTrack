@@ -7,6 +7,7 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
 import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded';
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
+import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
 import AccountTreeRoundedIcon from '@mui/icons-material/AccountTreeRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import SupportAgentRoundedIcon from '@mui/icons-material/SupportAgentRounded';
@@ -377,6 +378,12 @@ const HR_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Performance',
     path: '/performance',
     icon: BadgeRoundedIcon,
+  },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Engineering Skills',
+    path: '/skills',
+    icon: PsychologyRoundedIcon,
   },
   {
     module: MODULE_DASHBOARD,

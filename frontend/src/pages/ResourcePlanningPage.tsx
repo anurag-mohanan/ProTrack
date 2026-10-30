@@ -31,6 +31,7 @@ import { ResourcePlanningComputersByShiftPanel } from '../components/resource-pl
 import { ResourcePlanningForecastPanel } from '../components/resource-planning/ResourcePlanningForecastPanel';
 import { ResourcePlanningReportsPanel } from '../components/resource-planning/ResourcePlanningReportsPanel';
 import { ResourcePlanningEmployeeProfile } from '../components/resource-planning/ResourcePlanningEmployeeProfile';
+import { SkillCandidatePanel } from '../components/skills/SkillCandidatePanel';
 import { PageContainer } from '../components/common/PageContainer';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
@@ -63,7 +64,7 @@ const GRANULARITY_OPTIONS: { value: ResourcePlanningGranularity; label: string }
   { value: 'day', label: 'Daily' },
 ];
 
-type MainTab = 'planning' | 'shifts' | 'it' | 'forecast' | 'reports' | 'quality';
+type MainTab = 'planning' | 'shifts' | 'it' | 'forecast' | 'skills' | 'reports' | 'quality';
 
 export function ResourcePlanningPage() {
   const queryClient = useQueryClient();
@@ -252,6 +253,7 @@ export function ResourcePlanningPage() {
         <Tab value="shifts" label="Shifts & people" sx={{ minHeight: 40 }} />
         <Tab value="it" label="Computers & software" sx={{ minHeight: 40 }} />
         <Tab value="forecast" label="Forecast" sx={{ minHeight: 40 }} />
+        <Tab value="skills" label="Skill match" sx={{ minHeight: 40 }} />
         <Tab value="reports" label="Reports" sx={{ minHeight: 40 }} />
         <Tab value="quality" label="Data quality" sx={{ minHeight: 40 }} />
       </Tabs>
@@ -289,6 +291,8 @@ export function ResourcePlanningPage() {
                 ? 'data quality review'
                 : mainTab === 'forecast'
                   ? 'forecast scenarios'
+                  : mainTab === 'skills'
+                    ? 'skill-based candidate search'
                   : mainTab === 'reports'
                     ? 'reports'
                     : 'IT readiness'}
@@ -350,6 +354,12 @@ export function ResourcePlanningPage() {
             totalPlanned={totalAllocated}
             liveUtil={avgUtil}
           />
+        </Box>
+      )}
+
+      {mainTab === 'skills' && (
+        <Box sx={{ mt: 1 }}>
+          <SkillCandidatePanel key={teamParam ?? 'all'} teamId={teamParam} />
         </Box>
       )}
 

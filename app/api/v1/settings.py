@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.auth_deps import require_roles
+from app.api.auth_deps import get_current_user, require_roles
 from app.api.deps import get_db
 from app.core.config import COMPANY_LOGO_DIR
 from app.core.uploads import enforce_upload_size
@@ -22,7 +22,6 @@ from app.crud.foundation import (
     list_email_templates,
     list_skills,
     list_user_skills,
-    replace_user_skills,
     restore_default_branding_settings,
     update_branding_settings,
     update_company_settings,
@@ -62,6 +61,11 @@ from app.schemas.settings import (
     UserSkillRead,
 )
 from app.schemas.enterprise import LegalEntityCreate, LegalEntityRead
+from app.models.models import User
+from app.models.skills import STATUS_ARCHIVED
+from app.services.skills.access import resolve_skill_access
+from app.services.skills.errors import SkillError
+from app.services.skills.profiles import legacy_replace
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 admin_access = [Depends(require_roles("Admin"))]
@@ -379,7 +383,7 @@ def get_contact_types(db: Session = Depends(get_db)):
     return list_contact_types(db)
 
 
-@router.get("/skills", response_model=list[SkillRead])
+@router.get("/skills", response_model=list[SkillRead], dependencies=[Depends(get_current_user)])
 def get_skills(db: Session = Depends(get_db)):
     return list_skills(db)
 
@@ -390,8 +394,14 @@ def get_disciplines(db: Session = Depends(get_db)):
 
 
 @router.get("/users/{user_id}/skills", response_model=list[UserSkillRead])
-def get_user_skills(user_id: UUID, db: Session = Depends(get_db)):
-    rows = list_user_skills(db, user_id)
+def get_user_skills(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not resolve_skill_access(db, current_user).can_view_profile(db, user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Skill profile access denied")
+    rows = [row for row in list_user_skills(db, user_id) if row.status != STATUS_ARCHIVED]
     return [
         UserSkillRead(
             id=row.id,
@@ -411,8 +421,17 @@ def set_user_skills(
     user_id: UUID,
     payload: list[UserSkillCreate],
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    rows = replace_user_skills(db, user_id, payload)
+    try:
+        rows = legacy_replace(
+            db, user_id=user_id, items=[(item.skill_id, item.proficiency) for item in payload], actor=current_user
+        )
+    except SkillError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    db.commit()
+    for row in rows:
+        db.refresh(row)
     return [
         UserSkillRead(
             id=row.id,

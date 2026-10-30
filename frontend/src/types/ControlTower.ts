@@ -1,5 +1,5 @@
 export type CtSeverity = 'critical' | 'high' | 'medium' | 'info';
-export type CtCategory = 'schedule' | 'effort' | 'delivery' | 'data_quality';
+export type CtCategory = 'schedule' | 'effort' | 'delivery' | 'data_quality' | 'capability';
 export type CtFindingStatus = 'active' | 'not_assessable' | 'resolved';
 export type CtView = 'risks' | 'data_quality' | 'resolved';
 export type CtState = 'never_evaluated' | 'running' | 'last_run_failed' | 'stale' | 'ok';

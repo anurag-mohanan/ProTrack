@@ -72,6 +72,7 @@ const CATEGORY_LABELS: Record<CtCategory, string> = {
   effort: 'Effort vs estimate',
   delivery: 'Project delivery',
   data_quality: 'Data quality',
+  capability: 'Skills capability',
 };
 
 const STATUS_LABELS: Record<CtFindingStatus, string> = {

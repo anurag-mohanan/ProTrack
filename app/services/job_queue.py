@@ -19,6 +19,7 @@ JOB_PROCESS_EMAIL_QUEUE = "process_email_queue"
 JOB_HISTORICAL_IMPORT = "historical_import"
 JOB_TIMESHEET_IMPORT = "timesheet_import"
 JOB_CONTROL_TOWER_EVALUATION = "control_tower_evaluation"
+JOB_AUTOMATION_SWEEP = "automation_sweep"
 
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
@@ -151,6 +152,11 @@ def _execute(db: Session, row: BackgroundJob) -> None:
             run_evaluation(db, trigger="job")
         except EvaluationInProgress:
             logger.info("Control Tower evaluation already running; job skipped")
+        return
+    if row.job_type == JOB_AUTOMATION_SWEEP:
+        from app.services.automation.engine import run_sweeps
+
+        logger.info("Automation sweep: %s", run_sweeps(db))
         return
     raise ValueError(f"Unknown job type: {row.job_type}")
 

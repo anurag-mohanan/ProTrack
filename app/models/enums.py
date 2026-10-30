@@ -319,6 +319,9 @@ class ActivityAction(enum.Enum):
     it_setup_assigned = "it_setup_assigned"
     skill_profile_changed = "skill_profile_changed"
     skill_taxonomy_changed = "skill_taxonomy_changed"
+    project_template_reconciled = "project_template_reconciled"
+    milestone_lifecycle_changed = "milestone_lifecycle_changed"
+    automation_rule_changed = "automation_rule_changed"
 
 
 class NotificationType(enum.Enum):
@@ -345,6 +348,7 @@ class NotificationType(enum.Enum):
     ticket_escalated = "ticket_escalated"
     ticket_needs_owner = "ticket_needs_owner"
     onboarding_task_update = "onboarding_task_update"
+    workflow_automation = "workflow_automation"
 
 
 class WorkingModelCode(enum.Enum):

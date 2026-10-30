@@ -77,6 +77,14 @@ def enrich_milestone_read(
         assigned_user_name=assigned_name,
         qa_acknowledged=bool(getattr(milestone, "qa_acknowledged", False)),
         qa_gate_required=qa_gate_required,
+        is_required=bool(milestone.is_required),
+        project_stage=milestone.project_stage,
+        template_milestone_id=milestone.template_milestone_id,
+        depends_on_ids=milestone.depends_on_ids,
+        lifecycle_state=milestone.lifecycle_state or "active",
+        merged_into_id=milestone.merged_into_id,
+        lifecycle_reason=milestone.lifecycle_reason,
+        lifecycle_changed_at=milestone.lifecycle_changed_at,
     )
 
 
@@ -85,15 +93,18 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
     if project is None:
         raise ValueError("Project not found")
 
-    milestones = list(
+    from app.services.milestone_lifecycle import is_active
+
+    all_milestones = list(
         db.scalars(
             select(Milestone)
             .where(Milestone.project_id == project_id)
             .order_by(Milestone.sort_order, Milestone.name)
         ).all()
     )
-    milestone_ids = [row.id for row in milestones]
-    actual_by_milestone = batch_milestone_actual_hours(db, milestone_ids)
+    # Hours booked on merged/superseded records still count; their plan and status do not.
+    actual_by_milestone = batch_milestone_actual_hours(db, [row.id for row in all_milestones])
+    milestones = [row for row in all_milestones if is_active(row)]
 
     total_planned = sum((_decimal(row.planned_hours) for row in milestones), Decimal("0"))
     total_actual = sum(actual_by_milestone.values(), Decimal("0"))
@@ -158,14 +169,16 @@ def get_project_milestone_summary(db: Session, project_id: UUID) -> ProjectMiles
     )
 
 
-def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
+def recalculate_project_planned_hours(db: Session, project_id: UUID, *, commit: bool = True) -> Decimal:
     """Current planned hours: stage estimates when configured, else milestone sum.
 
     With stage estimates the total is the approved stage hours plus hours on
     milestones outside the planned stages (e.g. Feasibility, release steps).
+    Merged, superseded and archived milestones are not counted.
     """
     from app.models.enums import PLANNED_STAGES
     from app.models.models import ProjectStageEstimate
+    from app.services.milestone_lifecycle import active_milestone_clause
 
     stage_total = db.scalar(
         select(func.sum(ProjectStageEstimate.current_hours)).where(
@@ -176,6 +189,7 @@ def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
         unstaged = db.scalar(
             select(func.coalesce(func.sum(Milestone.planned_hours), 0)).where(
                 Milestone.project_id == project_id,
+                active_milestone_clause(),
                 (Milestone.project_stage.is_(None))
                 | (Milestone.project_stage.not_in(PLANNED_STAGES)),
             )
@@ -185,7 +199,8 @@ def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
         total = _decimal(
             db.scalar(
                 select(func.coalesce(func.sum(Milestone.planned_hours), 0)).where(
-                    Milestone.project_id == project_id
+                    Milestone.project_id == project_id,
+                    active_milestone_clause(),
                 )
             )
         )
@@ -193,7 +208,10 @@ def recalculate_project_planned_hours(db: Session, project_id: UUID) -> Decimal:
     if project is not None:
         project.current_planned_hours = total
         db.add(project)
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     return total
 
 

@@ -200,7 +200,7 @@ def test_template_milestone_fields_persist(client, template_db):
     assert milestone["project_stage"] == "intermediate"
 
 
-def test_apply_template_replaces_milestones(client, template_db):
+def test_apply_template_never_replaces_existing_milestones(client, template_db):
     mold_type = _get_project_type(template_db, "Mold Design")
     general = _get_template(template_db, "General Mold Design")
     payload = _create_project_payload(
@@ -232,14 +232,16 @@ def test_apply_template_replaces_milestones(client, template_db):
         json={},
         headers=client.auth_headers,
     )
-    assert apply_response.status_code == 200, apply_response.text
+    # Projects with milestones change template through the reconciliation preview.
+    assert apply_response.status_code == 409, apply_response.text
 
+    template_db.expire_all()
     milestones = template_db.scalars(
         select(Milestone)
         .where(Milestone.project_id == uuid.UUID(project_id))
         .order_by(Milestone.sort_order)
     ).all()
-    assert [milestone.name for milestone in milestones] == ["Kickoff", "Delivery"]
+    assert len(milestones) == 7
 
 
 def test_duplicate_template(client, template_db):
@@ -456,7 +458,7 @@ def test_project_template_health_check_passes(template_db):
     assert warnings == []
 
 
-def test_apply_template_blocked_after_completed_milestone(client, template_db):
+def test_template_change_allowed_after_completed_milestone(client, template_db):
     mold_type = _get_project_type(template_db, "Mold Design")
     general = _get_template(template_db, "General Mold Design")
     payload = _create_project_payload(
@@ -479,13 +481,25 @@ def test_apply_template_blocked_after_completed_milestone(client, template_db):
     milestone.status = MilestoneStatus.completed
     template_db.commit()
 
+    read = client.get(f"/api/v1/projects/{project_id}", headers=client.auth_headers).json()
+    assert read["can_change_template"] is True
+    assert read["template_change_blocked_reason"] is None
+
     apply_response = client.post(
         f"/api/v1/projects/{project_id}/apply-template",
         json={"project_template_id": str(general.id)},
         headers=client.auth_headers,
     )
-    assert apply_response.status_code == 422
-    assert "completed" in apply_response.json()["detail"].lower()
+    assert apply_response.status_code == 409
+    assert "change template" in apply_response.json()["detail"].lower()
+
+    preview = client.post(
+        f"/api/v1/projects/{project_id}/template-reconciliation/preview",
+        json={"template_id": str(general.id)},
+        headers=client.auth_headers,
+    )
+    assert preview.status_code == 200, preview.text
+    assert any(row["completion_retained"] for row in preview.json()["matches"])
 
 
 def test_project_read_exposes_template_change_eligibility(client, template_db):

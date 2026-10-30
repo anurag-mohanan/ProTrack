@@ -1044,6 +1044,11 @@ class ProjectTemplateMilestone(Base, TimestampMixin, TenantMixin):
     is_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # JSON list of sibling template-milestone ids that must finish first.
     depends_on_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Same logical milestone across versions and copies of a template. Empty on rows
+    # created before phase 110; readers fall back to ``id``.
+    lineage_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
 
     template: Mapped[ProjectTemplate] = relationship(back_populates="milestones")
     default_assigned_user: Mapped[Optional[User]] = relationship(
@@ -1115,6 +1120,10 @@ class Project(Base, TimestampMixin, TenantMixin):
     )
     project_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("project_templates.id"), nullable=True
+    )
+    # Incremented by every template reconciliation; a stale preview cannot be applied.
+    milestone_plan_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
     working_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("working_models.id"), nullable=True
@@ -1313,6 +1322,24 @@ class Milestone(Base, TimestampMixin, TenantMixin):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     override_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Record lifecycle, separate from the workflow ``status``: merged, superseded and
+    # archived milestones keep their status and completion evidence but no longer
+    # count in progress, schedules or reports. See app.services.milestone_lifecycle.
+    lifecycle_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active", index=True
+    )
+    merged_into_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("milestones.id"), nullable=True, index=True
+    )
+    lifecycle_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    lifecycle_changed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    lifecycle_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Reconciliation that added this milestone or last changed its lifecycle.
+    reconciliation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
 
     project: Mapped[Project] = relationship(back_populates="milestones")
     assigned_user: Mapped[Optional[User]] = relationship(
@@ -1321,6 +1348,10 @@ class Milestone(Base, TimestampMixin, TenantMixin):
     timesheet_entries: Mapped[list[TimesheetEntry]] = relationship(
         back_populates="milestone"
     )
+
+    @property
+    def is_active_record(self) -> bool:
+        return (self.lifecycle_state or "active") == "active"
 
 
 class ProjectStageEstimate(Base, TimestampMixin, TenantMixin):
@@ -2422,6 +2453,11 @@ from app.models.skills import (  # noqa: E402, F401
     SkillRelationship,
     UserSkillEvent,
     UserSkillEvidence,
+)
+from app.models.workflow import (  # noqa: E402, F401
+    AutomationExecution,
+    AutomationRule,
+    ProjectTemplateReconciliation,
 )
 from app.models.commercial import (  # noqa: E402, F401
     FeatureFlag,

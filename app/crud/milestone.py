@@ -133,6 +133,13 @@ class CRUDMilestone(CRUDBase[Milestone, MilestoneCreate, MilestoneUpdate]):
                         old_value=previous_status,
                         new_value=updated.status,
                     )
+        if update_data.get("status") == MilestoneStatus.completed and previous_status != MilestoneStatus.completed:
+            try:
+                from app.services.automation import events
+
+                events.milestone_completed(db, updated, actor=actor)
+            except Exception:  # noqa: BLE001 - automation never blocks a milestone update
+                db.rollback()
         return updated
 
     def delete(self, db, *, record_id: UUID, actor=None) -> Milestone | None:

@@ -188,6 +188,8 @@ const EmailSettingsPage = lazy(() => import('./pages/admin/EmailSettingsPage'));
 const EmailTemplatesPage = lazy(() => import('./pages/admin/EmailTemplatesPage'));
 const EmailQueuePage = lazy(() => import('./pages/admin/EmailQueuePage'));
 const AuditLogsPage = lazy(() => import('./pages/admin/AuditLogsPage'));
+const AutomationPage = lazy(() => import('./pages/admin/AutomationPage'));
+const DecisionAuditPage = lazy(() => import('./pages/admin/DecisionAuditPage'));
 const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
 const SecuritySettingsPage = lazy(() => import('./pages/admin/SecuritySettingsPage'));
 const SecurityCenterPage = lazy(() => import('./pages/admin/SecurityCenterPage'));
@@ -844,6 +846,22 @@ export default function App() {
                         element={
                           <LazyAdminPage>
                             <AuditLogsPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/audit/decisions"
+                        element={
+                          <LazyAdminPage>
+                            <DecisionAuditPage />
+                          </LazyAdminPage>
+                        }
+                      />
+                      <Route
+                        path="/admin/settings/automation"
+                        element={
+                          <LazyAdminPage>
+                            <AutomationPage />
                           </LazyAdminPage>
                         }
                       />

@@ -289,6 +289,9 @@ from app.db.phase108_engineering_management_schema_sync import (
 from app.db.phase109_engineering_skills_schema_sync import (
     ensure_phase109_engineering_skills_foundation,
 )
+from app.db.phase110_workflow_reconciliation_schema_sync import (
+    ensure_phase110_workflow_reconciliation_foundation,
+)
 from app.db.phase106_shift_aware_allocation_schema_sync import (
     ensure_phase106_shift_aware_allocation_foundation,
 )
@@ -379,6 +382,11 @@ async def lifespan(app: FastAPI):
         (
             "phase109_engineering_skills",
             ensure_phase109_engineering_skills_foundation,
+        ),
+        # Milestone lifecycle columns are read by every later step that loads Milestone.
+        (
+            "phase110_workflow_reconciliation",
+            ensure_phase110_workflow_reconciliation_foundation,
         ),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),

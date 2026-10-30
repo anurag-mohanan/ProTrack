@@ -4,6 +4,7 @@ Usage:
   python -m app.jobs.runner --once
   python -m app.jobs.runner --loop --sleep 5 --limit 20
   python -m app.jobs.runner --control-tower   # queue one Control Tower evaluation, then --once
+  python -m app.jobs.runner --automation      # queue one automation sweep, then --once
 """
 
 from __future__ import annotations
@@ -30,15 +31,25 @@ def main() -> None:
         action="store_true",
         help="Queue one Control Tower evaluation before processing (for a daily scheduled task)",
     )
+    parser.add_argument(
+        "--automation",
+        action="store_true",
+        help="Queue one sweep of the enabled automation rules before processing (daily scheduled task)",
+    )
     args = parser.parse_args()
 
     if not args.once and not args.loop:
         args.once = True
 
-    if args.control_tower:
+    for flag, job_type in (
+        (args.control_tower, job_queue.JOB_CONTROL_TOWER_EVALUATION),
+        (args.automation, job_queue.JOB_AUTOMATION_SWEEP),
+    ):
+        if not flag:
+            continue
         db = SessionLocal()
         try:
-            job_queue.enqueue_job(db, job_type=job_queue.JOB_CONTROL_TOWER_EVALUATION, max_attempts=1)
+            job_queue.enqueue_job(db, job_type=job_type, max_attempts=1)
         finally:
             db.close()
 

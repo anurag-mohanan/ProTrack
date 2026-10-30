@@ -14,6 +14,7 @@ from app.api.v1 import (
     documents,
     emails,
     finance,
+    forecasting,
     history_imports,
     hr,
     imports,
@@ -168,6 +169,7 @@ api_router.include_router(calendar.router)
 api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(control_tower.router)
+api_router.include_router(forecasting.router)
 api_router.include_router(finance.router)
 api_router.include_router(hr.router)
 api_router.include_router(onboarding.router)

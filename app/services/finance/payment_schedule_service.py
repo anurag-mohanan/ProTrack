@@ -367,6 +367,18 @@ def milestone_scheduled_amount(
     return Decimal("0.00")
 
 
+def matched_invoice_line(
+    milestone: QuotePaymentMilestone,
+    invoice_lines: list[QuoteInvoiceLine],
+) -> QuoteInvoiceLine | None:
+    """Invoice line that fulfils ``milestone`` (explicit link first, then back-reference). Read-only."""
+    if milestone.fulfilled_invoice_line_id:
+        line = next((x for x in invoice_lines if x.id == milestone.fulfilled_invoice_line_id), None)
+        if line is not None:
+            return line
+    return next((x for x in invoice_lines if x.payment_milestone_id == milestone.id), None)
+
+
 def summarize_quote_payment_schedule(
     db: Session,
     *,
@@ -412,15 +424,7 @@ def summarize_quote_payment_schedule(
         if m.percentage is not None:
             pct_total += Decimal(str(m.percentage))
 
-        inv_line = None
-        if m.fulfilled_invoice_line_id:
-            inv_line = next(
-                (x for x in invoice_lines if x.id == m.fulfilled_invoice_line_id), None
-            )
-        if inv_line is None:
-            inv_line = next(
-                (x for x in invoice_lines if x.payment_milestone_id == m.id), None
-            )
+        inv_line = matched_invoice_line(m, invoice_lines)
 
         paid_amt = Decimal("0.00")
         out_amt = Decimal("0.00")

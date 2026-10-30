@@ -27,6 +27,7 @@ import { EngineeringDataQualityPanel } from '../components/reports/EngineeringDa
 import { EngineeringPerformancePanel } from '../components/reports/EngineeringPerformancePanel';
 import { QuoteToDeliveryPanel } from '../components/reports/QuoteToDeliveryPanel';
 import { ControlTowerPanel } from '../components/reports/ControlTowerPanel';
+import { ForecastsPanel } from '../components/reports/ForecastsPanel';
 import { CustomerTimesheetPackPanel } from '../components/reports/CustomerTimesheetPackPanel';
 import { DesignerTeamTimesheetPanel } from '../components/reports/DesignerTeamTimesheetPanel';
 import { useAuth } from '../context/AuthContext';
@@ -50,6 +51,7 @@ const TAB_CONFIG = [
   { label: 'Engineering Performance', slug: 'engineering-performance' },
   { label: 'Quote-to-Delivery', slug: 'quote-to-delivery' },
   { label: 'Control Tower', slug: 'control-tower' },
+  { label: 'Forecasts', slug: 'forecasts' },
   { label: 'Timesheet Reports', slug: 'timesheet-reports' },
   { label: 'Operational Overview', slug: 'engineering-suite' },
   { label: 'Project Hours', slug: 'project-hours' },
@@ -128,6 +130,7 @@ export function ReportsPage() {
   const performanceEnabled = activeSlug === 'engineering-performance';
   const quoteToDeliveryEnabled = activeSlug === 'quote-to-delivery';
   const controlTowerEnabled = activeSlug === 'control-tower';
+  const forecastsEnabled = activeSlug === 'forecasts';
   const timesheetReportsEnabled = activeSlug === 'timesheet-reports';
   const suiteEnabled = activeSlug === 'engineering-suite';
   const projectHoursEnabled = activeSlug === 'project-hours';
@@ -201,7 +204,7 @@ export function ReportsPage() {
     <PageContainer>
       <ModernPageHeader
         title="Reports"
-        subtitle="Engineering performance, quote-to-delivery, control tower, timesheets, operational overview, project hours, teams, and customer packs"
+        subtitle="Engineering performance, quote-to-delivery, control tower, forecasts, timesheets, operational overview, project hours, teams, and customer packs"
       />
 
       <FilterToolbar
@@ -233,6 +236,8 @@ export function ReportsPage() {
       ) : null}
 
       {controlTowerEnabled ? <ControlTowerPanel /> : null}
+
+      {forecastsEnabled ? <ForecastsPanel /> : null}
 
       {timesheetReportsEnabled ? (
         <DesignerTeamTimesheetPanel

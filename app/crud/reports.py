@@ -14,6 +14,7 @@ from app.crud.base import Session
 from app.crud.dashboard import get_designer_workload, _decimal, _round_hours
 from app.models.enums import ContributionReason, ExecutionStatus, MilestoneStatus, ProjectClassification, ProjectHealth, ProjectStage, TimesheetStatus, WorkCategory
 from app.models.models import Customer, Milestone, NonProductiveCode, Project, ProjectSmallTaskType, Stream, TaskType, Team, Timesheet, TimesheetEntry, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.reports import (
     BillableUtilizationReportRow,
     BillableVsNonBillableReportRow,
@@ -477,6 +478,7 @@ def get_milestone_completion_report(
     stmt = (
         select(Milestone, Project.code)
         .join(Project, Milestone.project_id == Project.id)
+        .where(Milestone.lifecycle_state == LIFECYCLE_ACTIVE)
         .order_by(Project.code, Milestone.sort_order)
     )
     stmt = _apply_report_filters(

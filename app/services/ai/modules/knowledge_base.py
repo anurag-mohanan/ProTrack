@@ -11,6 +11,7 @@ from app.crud.project_metrics import build_project_read
 from app.models.enums import ExecutionStatus
 from app.models.intelligence import EngineeringChange, ProjectKnowledgeRecord
 from app.models.models import Milestone, Project
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.ai import KnowledgeRecord
 from app.services.ai.base import AiContext, AiModule, round_hours
 
@@ -25,7 +26,9 @@ class KnowledgeBaseModule(AiModule):
         read = build_project_read(ctx.db, project)
         milestone_count = int(
             ctx.db.scalar(
-                select(func.count()).select_from(Milestone).where(Milestone.project_id == project.id)
+                select(func.count()).select_from(Milestone).where(
+                    Milestone.project_id == project.id, Milestone.lifecycle_state == LIFECYCLE_ACTIVE
+                )
             )
             or 0
         )

@@ -1,4 +1,4 @@
-"""Engineering Control Tower API: read findings, trigger an evaluation, acknowledge."""
+"""Engineering Control Tower API: read findings, trigger an evaluation, acknowledge, triage, convert."""
 
 from datetime import date
 from uuid import UUID
@@ -19,10 +19,14 @@ from app.schemas.control_tower import (
     ControlTowerFilters,
     ControlTowerResponse,
     ControlTowerView,
+    ConvertRequest,
+    ConvertResult,
     EvaluationRunRead,
     FindingDetail,
     FindingStatus,
     Severity,
+    TriageFilter,
+    TriageRequest,
 )
 from app.services import control_tower_service as ct
 from app.services.reporting.report_scope import (
@@ -85,6 +89,7 @@ def get_control_tower(
     project_id: UUID | None = Query(None),
     owner_id: str | None = Query(None, max_length=40),
     search: str | None = Query(None, max_length=100),
+    triage: TriageFilter | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -120,6 +125,7 @@ def get_control_tower(
         project_id=project_id,
         owner_id=owner_id,
         search=search.strip() if search and search.strip() else None,
+        triage=triage,
     )
     findings, total = ct.list_findings(db, scope, query, page=page, page_size=page_size)
     latest, succeeded = ct.latest_runs(db)
@@ -129,10 +135,15 @@ def get_control_tower(
     if total == 0:
         if succeeded is None:
             empty_message = "No evaluation has succeeded yet, so there are no findings to show."
-        elif any([severity, category, status_filter, project_id, owner_id, query.search]):
+        elif any([severity, category, status_filter, project_id, owner_id, query.search, triage]):
             empty_message = "No findings match these filters."
         elif view == "resolved":
             empty_message = "No findings have been resolved yet."
+        elif view == "predictive":
+            empty_message = (
+                "No open forecast findings in your projects. Forecasts need recent predictions; projects without "
+                "enough comparable history get no forecast and therefore no finding."
+            )
         elif view == "data_quality":
             empty_message = "No open data-quality findings in your projects at the last successful evaluation."
         else:
@@ -154,6 +165,7 @@ def get_control_tower(
             project_id=project_id,
             owner_id=owner_id,
             search=query.search,
+            triage=triage,
         ),
         findings=findings,
         total=total,
@@ -222,3 +234,43 @@ def acknowledge_finding(
     finding = ct.acknowledge_finding(db, finding, user_id=current_user.id, note=payload.note)
     read = ct.to_reads(db, [(finding, project)])[0]
     return FindingDetail(**read.model_dump(), events=ct.finding_events(db, finding.id))
+
+
+def _require_manage(db: Session, user: User) -> None:
+    if not _can_manage(db, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requires the 'edit_projects' permission.")
+
+
+@router.post("/findings/{finding_id}/triage", response_model=FindingDetail)
+def triage_finding(
+    finding_id: UUID,
+    payload: TriageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark as investigating or dismissed (with a reason), or clear the mark. Never resolves the finding."""
+    _require_manage(db, current_user)
+    finding, project = _visible_finding(db, current_user, finding_id)
+    try:
+        finding = ct.triage_finding(db, finding, user=current_user, action=payload.action, note=payload.note)
+    except ct.FindingActionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    read = ct.to_reads(db, [(finding, project)])[0]
+    return FindingDetail(**read.model_dump(), events=ct.finding_events(db, finding.id))
+
+
+@router.post("/findings/{finding_id}/convert", response_model=ConvertResult)
+def convert_finding(
+    finding_id: UUID,
+    payload: ConvertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record the finding as a recommendation in the review queue. Nothing is executed."""
+    _require_manage(db, current_user)
+    finding, _project = _visible_finding(db, current_user, finding_id)
+    try:
+        recommendation = ct.convert_finding(db, finding, user=current_user, note=payload.note)
+    except ct.FindingActionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return ConvertResult(recommendation_id=recommendation.id, status=recommendation.status, title=recommendation.title)

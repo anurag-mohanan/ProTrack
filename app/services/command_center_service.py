@@ -427,9 +427,11 @@ def get_project_command_center(db: Session, project_id: UUID) -> ProjectCommandC
     completed, remaining, progress = get_milestone_summary(db, project_id)
     hours = calculate_hours(db, project)
 
+    from app.services.milestone_lifecycle import active_milestone_clause
+
     milestones = db.scalars(
         select(Milestone)
-        .where(Milestone.project_id == project_id)
+        .where(Milestone.project_id == project_id, active_milestone_clause())
         .order_by(Milestone.sort_order)
     ).all()
 

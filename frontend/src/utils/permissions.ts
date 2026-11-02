@@ -20,6 +20,8 @@ import DevicesOtherRoundedIcon from '@mui/icons-material/DevicesOtherRounded';
 import InventoryRoundedIcon from '@mui/icons-material/InventoryRounded';
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
 import AppsRoundedIcon from '@mui/icons-material/AppsRounded';
+import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
+import TimelineRoundedIcon from '@mui/icons-material/TimelineRounded';
 import type { CurrentUser } from '../types';
 import {
   ALL_MODULES,
@@ -299,6 +301,7 @@ const NAV_MODULE_CONFIG: Array<{
     path: '/planning-board',
     icon: CalendarMonthRoundedIcon,
   },
+  { module: MODULE_DASHBOARD, label: 'Assistant', path: '/assistant', icon: SmartToyRoundedIcon },
 ];
 
 type SectionNavConfigItem = {
@@ -332,6 +335,13 @@ const OPERATIONS_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Engineering Reports',
     path: '/reports',
     icon: AssessmentRoundedIcon,
+  },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Predictive Intelligence',
+    path: '/predictive',
+    icon: TimelineRoundedIcon,
+    visible: (ctx: AccessContext) => canViewReports(ctx),
   },
 ];
 

@@ -46,6 +46,7 @@ import {
   ProjectStageChip,
 } from '../components/common/StatusChip';
 import { ChangeProjectTemplateDialog } from '../components/projects/ChangeProjectTemplateDialog';
+import { summarizeReconciliation } from '../services/templateReconciliationService';
 import { MilestoneFormDialog } from '../components/projects/MilestoneFormDialog';
 import { ProjectFormDialog } from '../components/projects/ProjectFormDialog';
 import { AppCard, CollapsiblePanel, FormDrawer, FormField, PriorityBadge, StickyRecordHeader } from '../components/ui/design-system';
@@ -773,8 +774,8 @@ export function ProjectDetailPage() {
         canChangeTemplate={project.can_change_template ?? true}
         blockedReason={project.template_change_blocked_reason}
         onClose={() => setChangeTemplateOpen(false)}
-        onApplied={() => {
-          showSuccess('Project template changed. Milestones were regenerated.');
+        onApplied={(result) => {
+          showSuccess(summarizeReconciliation(result));
           setChangeTemplateOpen(false);
           invalidate();
         }}

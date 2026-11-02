@@ -49,7 +49,13 @@ def incomplete_required_milestones(db: Session, project_id: UUID) -> list[Milest
     if project is None:
         return []
 
-    rows = list(db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all())
+    from app.services.milestone_lifecycle import active_milestone_clause
+
+    rows = list(
+        db.scalars(
+            select(Milestone).where(Milestone.project_id == project_id, active_milestone_clause())
+        ).all()
+    )
     # Prefer persisted is_required on project milestones.
     if any(hasattr(row, "is_required") for row in rows):
         flagged = [row for row in rows if bool(getattr(row, "is_required", True))]

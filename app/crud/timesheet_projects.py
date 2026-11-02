@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.enums import ExecutionStatus, MilestoneStatus
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.models.models import (
     Customer,
     Milestone,
@@ -179,6 +180,7 @@ def get_timesheet_project_context(
         select(Milestone)
         .where(
             Milestone.project_id == project_id,
+            Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
             Milestone.status != MilestoneStatus.completed,
         )
         .order_by(Milestone.due_date.nulls_last(), Milestone.sort_order)

@@ -42,8 +42,8 @@ def _warnings(target: ProjectFacts) -> list[str]:
     notes = []
     if target.unapproved_hours or target.rejected_hours:
         notes.append(
-            f"Actual hours include {target.unapproved_hours} h draft or submitted and {target.rejected_hours} h rejected "
-            "time (the current project rule; whether these should count is an open decision)."
+            f"Actual hours are approved time only: {target.unapproved_hours} h on draft or submitted and "
+            f"{target.rejected_hours} h on rejected timesheets are not included."
         )
     if "stage_attribution_incomplete" in target.issue_codes:
         notes.append("Hours are not fully linked to stages, so stage history is not used.")

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.crud.team_reports import get_team_resource_planning
 from app.models.enums import ExecutionStatus, MilestoneStatus, UserAvailabilityStatus
 from app.models.models import Customer, Milestone, Project, Team, TeamMember, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.resource_planning import (
     ResourceAllocationBlock,
     ResourcePlanningCell,
@@ -51,7 +52,9 @@ def _batch_open_milestone_load(
     if not project_ids:
         return {}
     milestones = db.scalars(
-        select(Milestone).where(Milestone.project_id.in_(project_ids))
+        select(Milestone).where(
+            Milestone.project_id.in_(project_ids), Milestone.lifecycle_state == LIFECYCLE_ACTIVE
+        )
     ).all()
     result: dict[UUID, tuple[Decimal, int, int]] = {
         project_id: (Decimal("0"), 0, 0) for project_id in project_ids

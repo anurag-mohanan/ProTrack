@@ -31,6 +31,8 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
+import GavelIcon from '@mui/icons-material/Gavel';
 import {
   canAccessAdministration,
   canImportHistoricalProjects,
@@ -246,6 +248,7 @@ const ALL_SETTINGS_ITEMS: AdminHubItem[] = [
   { id: 'email-templates', title: 'Email Templates', description: 'Transactional and manual notification templates.', icon: EmailIcon, path: '/admin/settings/email-templates' },
   { id: 'email-queue', title: 'Email Queue', description: 'Outgoing mail queue, delivery status, and retries.', icon: EmailIcon, path: '/admin/settings/email-queue' },
   { id: 'notifications', title: 'Notifications', description: 'System notification rules.', icon: AssessmentIcon, path: '/admin/settings/notifications' },
+  { id: 'automation', title: 'Workflow Automation', description: 'Automation rules, run history, failures, retries and recommendations awaiting review.', icon: AutoModeIcon, path: '/admin/settings/automation' },
   { id: 'backup', title: 'Backup', description: 'Database backup and restore.', icon: BackupIcon, path: '/admin/settings/backup' },
   { id: 'security', title: 'Security', description: 'Authentication and password policy.', icon: LockIcon, path: '/admin/settings/security' },
 ];
@@ -254,6 +257,7 @@ export const ADMIN_SETTINGS_ITEMS: AdminHubItem[] = ALL_SETTINGS_ITEMS;
 
 const ALL_AUDIT_ITEMS: AdminHubItem[] = [
   { id: 'audit-logs', title: 'Audit Logs', description: 'System activity and change history.', icon: HistoryIcon, path: '/admin/audit/logs' },
+  { id: 'decision-audit', title: 'Decision Audit', description: 'Template changes, milestone merges, rule switches and automation outcomes.', icon: GavelIcon, path: '/admin/audit/decisions' },
   { id: 'deleted-records', title: 'Deleted Records', description: 'Recover soft-deleted projects and users.', icon: DeleteIcon, path: '/admin/deleted-projects' },
   { id: 'deleted-users', title: 'Deleted Users', description: 'Review and restore deleted user accounts.', icon: PeopleIcon, path: '/admin/deleted-users' },
   { id: 'deleted-timesheets', title: 'Deleted Timesheet Entries', description: 'Audit and restore soft-deleted timesheet rows.', icon: ScheduleIcon, path: '/admin/deleted-timesheet-entries' },

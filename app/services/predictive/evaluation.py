@@ -19,6 +19,7 @@ from app.models.prediction import (
     OUTCOME_PENDING,
     Prediction,
 )
+from app.services.actual_hours import entries_on, official_entry_clause
 from app.services.delivery_variance_service import is_milestone_skipped, milestone_completion_date
 from app.services.milestone_lifecycle import is_active
 from app.services.predictive import delivery, finance, hours, milestone, resources
@@ -26,6 +27,7 @@ from app.services.predictive.inputs import ProjectFacts, load_facts
 
 # Late timesheets keep arriving after completion; final hours are scored once this has passed.
 HOURS_SETTLE_DAYS = 14
+UNAPPROVED = frozenset({TimesheetStatus.draft, TimesheetStatus.submitted})
 
 
 def _now() -> datetime:
@@ -62,7 +64,7 @@ def _evaluate_hours(p: Prediction, facts: ProjectFacts, as_of: date, now: dateti
         p.event_occurred = actual > p.baseline_value
     _score(p, error=Decimal(p.predicted_value) - actual, actual_scale=actual, naive=naive, now=now,
            horizon_days=(facts.completed_on - p.as_of).days)
-    p.outcome_note = "Actual hours include draft, submitted and rejected time (current project rule)."
+    p.outcome_note = "Actual hours are approved timesheet hours; submitted, draft and rejected time is excluded."
 
 
 def _evaluate_delivery(p: Prediction, facts: ProjectFacts, as_of: date, now: datetime) -> None:
@@ -118,7 +120,7 @@ def _evaluate_milestones(db: Session, as_of: date, now: datetime, counts: dict[s
         _tally(counts, p)
 
 
-def _booked_project_hours(db: Session, user_ids: list[UUID], start: date, end: date) -> Decimal:
+def _booked_project_hours(db: Session, user_ids: list[UUID], start: date, end: date, *, official: bool = True) -> Decimal:
     if not user_ids:
         return Decimal("0")
     total = db.scalar(
@@ -126,8 +128,7 @@ def _booked_project_hours(db: Session, user_ids: list[UUID], start: date, end: d
         .join(Timesheet, Timesheet.id == TimesheetEntry.timesheet_id)
         .where(
             Timesheet.user_id.in_(user_ids),
-            Timesheet.status != TimesheetStatus.rejected,
-            TimesheetEntry.is_deleted.is_(False),
+            official_entry_clause() if official else entries_on(UNAPPROVED),
             TimesheetEntry.project_id.is_not(None),
             TimesheetEntry.entry_date >= start,
             TimesheetEntry.entry_date <= end,
@@ -145,21 +146,29 @@ def _evaluate_demand(db: Session, as_of: date, now: datetime, counts: dict[str, 
         if p.subject_type == "skill":
             _close(p, now, "Hours are not recorded per skill, so skill demand cannot be checked.")
         elif p.subject_type == "person":
-            user_id = UUID(p.subject_key.split(":")[1])
-            _score_demand(p, _booked_project_hours(db, [user_id], p.horizon_start, p.horizon_end), now)
+            _score_demand(db, p, [UUID(p.subject_key.split(":")[1])], as_of, now)
         elif p.subject_type == "team" and p.team_id is not None:
             members = list(db.scalars(select(User.id).where(User.team_id == p.team_id)))
-            _score_demand(p, _booked_project_hours(db, members, p.horizon_start, p.horizon_end), now)
-            p.outcome_note = "Compared with project hours booked by the team's current members."
+            _score_demand(db, p, members, as_of, now, note="Compared with project hours booked by the team's current members.")
         else:
             _close(p, now, "People without a team cannot be grouped for comparison.")
         _tally(counts, p)
 
 
-def _score_demand(p: Prediction, actual: Decimal, now: datetime) -> None:
+def _score_demand(db: Session, p: Prediction, user_ids: list[UUID], as_of: date, now: datetime,
+                  note: str | None = None) -> None:
+    """Waits for draft or submitted hours in the window to be approved, at most HOURS_SETTLE_DAYS."""
+    unapproved = _booked_project_hours(db, user_ids, p.horizon_start, p.horizon_end, official=False)
+    if unapproved > 0 and as_of < p.horizon_end + timedelta(days=HOURS_SETTLE_DAYS):
+        return
+    actual = _booked_project_hours(db, user_ids, p.horizon_start, p.horizon_end)
     p.actual_value = actual
     _score(p, error=Decimal(p.predicted_value) - actual, actual_scale=actual if actual > 0 else None, naive=None,
            now=now, horizon_days=(p.horizon_end - p.as_of).days)
+    notes = [note] if note else []
+    if unapproved > 0:
+        notes.append(f"{unapproved} h on draft or submitted timesheets were never approved and are excluded.")
+    p.outcome_note = " ".join(notes) or None
 
 
 def _evaluate_finance(db: Session, as_of: date, now: datetime, counts: dict[str, int]) -> None:

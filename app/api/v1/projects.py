@@ -66,6 +66,10 @@ from app.schemas.command_center import (
     ProjectFolderPathsUpdate,
 )
 from app.schemas.dashboard import ProjectDashboard
+from app.schemas.template_reconciliation import (
+    TemplateReconciliationApplyRequest,
+    TemplateReconciliationPreviewRequest,
+)
 from app.schemas.project import (
     ArchivedProjectListItem,
     ProjectCreate,
@@ -113,10 +117,7 @@ class ApplyProjectTemplateRequest(BaseModel):
 
 def _handle_validation(exc: ProTrackValidationError) -> HTTPException:
     logger.info("Project validation error: %s", exc.detail)
-    return HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail=exc.detail,
-    )
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
 def _forbid() -> HTTPException:
@@ -955,8 +956,91 @@ def apply_project_template_endpoint(
             new_value=f"Applied template: {template.name}",
         )
     except ProTrackValidationError as exc:
+        db.rollback()
         raise _handle_validation(exc) from exc
     return project.get_read(db, record_id)
+
+
+def _reconciliation_project(db: Session, record_id: UUID, current_user: User):
+    from app.core.permissions import can_write_milestones
+
+    db_project = get_object_or_404(project, db, record_id)
+    if not (
+        can_update_project(db, current_user, db_project)
+        and can_write_milestones(db, current_user, db_project)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    return db_project
+
+
+@router.post("/{record_id}/template-reconciliation/preview")
+def preview_template_reconciliation(
+    record_id: UUID,
+    payload: TemplateReconciliationPreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read-only plan for changing the project's template. Nothing is saved."""
+    from app.services import template_reconciliation
+
+    db_project = _reconciliation_project(db, record_id, current_user)
+    try:
+        return template_reconciliation.preview(
+            db,
+            db_project,
+            payload.template_id,
+            template_decisions=payload.template_map(),
+            existing_decisions=payload.existing_map(),
+            apply_template_hours=payload.apply_template_hours,
+            schedule_new=payload.schedule_new,
+        )
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+
+
+@router.post("/{record_id}/template-reconciliation/apply")
+def apply_template_reconciliation(
+    record_id: UUID,
+    payload: TemplateReconciliationApplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply a previewed and confirmed plan in one transaction."""
+    from app.services import template_reconciliation
+
+    _reconciliation_project(db, record_id, current_user)
+    request = template_reconciliation.ApplyRequest(
+        template_id=payload.template_id,
+        fingerprint=payload.preview_fingerprint,
+        plan_version=payload.plan_version,
+        request_key=payload.request_key,
+        confirm=payload.confirm,
+        acknowledge_estimate_change=payload.acknowledge_estimate_change,
+        template_decisions=payload.template_map(),
+        existing_decisions=payload.existing_map(),
+        apply_template_hours=payload.apply_template_hours,
+        schedule_new=payload.schedule_new,
+        reason=payload.reason,
+    )
+    try:
+        result, replayed = template_reconciliation.apply(db, record_id, current_user, request)
+    except ProTrackValidationError as exc:
+        raise _handle_validation(exc) from exc
+    return {"reconciliation": result, "replayed": replayed, "project": project.get_read(db, record_id)}
+
+
+@router.get("/{record_id}/template-reconciliations")
+def list_template_reconciliations(
+    record_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services import template_reconciliation
+
+    db_project = get_object_or_404(project, db, record_id)
+    if not can_read_project(db, current_user, db_project):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    return template_reconciliation.history(db, record_id)
 
 
 @router.post("/{record_id}/archive", response_model=ProjectRead)

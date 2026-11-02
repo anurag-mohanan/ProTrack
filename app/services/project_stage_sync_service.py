@@ -68,10 +68,12 @@ def _as_stage(value: object | None) -> ProjectStage | None:
 
 def required_milestones(db: Session, project: Project) -> list[Milestone]:
     """Required milestones for completion, ordered by sort_order."""
+    from app.services.milestone_lifecycle import active_milestone_clause
+
     rows = list(
         db.scalars(
             select(Milestone)
-            .where(Milestone.project_id == project.id)
+            .where(Milestone.project_id == project.id, active_milestone_clause())
             .order_by(Milestone.sort_order.asc(), Milestone.name.asc())
         ).all()
     )

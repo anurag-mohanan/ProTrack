@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.ai import AiInsight
 from app.services.ai.base import AiContext, AiProvider, round_hours
 from app.services.ai.context import get_active_projects, count_overdue_milestones
@@ -50,6 +51,7 @@ class RiskAnalyzer(AiProvider):
                         (ExecutionStatus.planning, ExecutionStatus.currently_being_worked_on)
                     ),
                     Milestone.name.ilike("%GT3%"),
+                    Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                     Milestone.status != MilestoneStatus.completed,
                     Milestone.due_date.is_not(None),
                     Milestone.due_date <= ctx.today + timedelta(days=days),

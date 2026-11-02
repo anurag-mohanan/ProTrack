@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from app.models.enums import ExecutionStatus, MilestoneStatus
 from app.models.intelligence import EngineeringChange
 from app.models.models import Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.ai import ProductivityMetrics
 from app.services.ai.base import AiContext, AiModule, round_hours
 from app.services.kpi_participation import engineering_productivity_users
@@ -79,6 +80,7 @@ class ProductivityAnalyticsModule(AiModule):
                     .join(Project, Milestone.project_id == Project.id)
                     .where(
                         Milestone.status == MilestoneStatus.completed,
+                        Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                         Milestone.completed_at.is_not(None),
                         Milestone.completed_at >= month_start,
                         (Project.designer_id == person.id) | (Project.surfacer_id == person.id),

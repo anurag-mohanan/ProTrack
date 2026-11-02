@@ -7,17 +7,20 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 Severity = Literal["critical", "high", "medium", "info"]
-Category = Literal["schedule", "effort", "delivery", "data_quality", "capability"]
+Category = Literal["schedule", "effort", "delivery", "data_quality", "capability", "resource"]
 FindingStatus = Literal["active", "not_assessable", "resolved"]
-ControlTowerView = Literal["risks", "data_quality", "resolved"]
+ControlTowerView = Literal["risks", "predictive", "data_quality", "resolved"]
 ControlTowerState = Literal["never_evaluated", "running", "last_run_failed", "stale", "ok"]
+FindingSource = Literal["operational", "predictive"]
+TriageStatus = Literal["investigating", "dismissed"]
+TriageFilter = Literal["untriaged", "investigating", "dismissed"]
 
 
 class RuleDefinitionRead(BaseModel):
     rule_id: str
     title: str
     category: Category
-    kind: Literal["risk", "data_quality"]
+    kind: Literal["risk", "data_quality", "predictive"]
     severity_rule: str
     condition: str
     recommended_action: str
@@ -82,6 +85,14 @@ class FindingRead(BaseModel):
     acknowledged_by_name: str | None = None
     acknowledgement_note: str | None = None
     is_recurrence: bool = False
+    source: FindingSource = "operational"
+    source_label: str = "Operational"
+    prediction_id: UUID | None = None
+    triage_status: TriageStatus | None = None
+    triage_note: str | None = None
+    triaged_at: datetime | None = None
+    triaged_by_name: str | None = None
+    recommendation_id: UUID | None = None
 
 
 class FindingEventRead(BaseModel):
@@ -124,10 +135,16 @@ class CategoryCount(BaseModel):
 
 
 class ControlTowerSummary(BaseModel):
-    """Counts of open findings in the caller's project scope (filters not applied)."""
+    """Counts of open findings in the caller's project scope (filters not applied).
+
+    ``open_risks`` and ``by_severity`` cover operational risks only; forecasts are in ``open_predictive``.
+    Dismissed findings are excluded from every count except ``dismissed``.
+    """
 
     open_risks: int = 0
     open_data_quality: int = 0
+    open_predictive: int = 0
+    dismissed: int = 0
     not_assessable: int = 0
     projects_with_risks: int = 0
     projects_with_data_quality: int = 0
@@ -149,6 +166,7 @@ class ControlTowerFilters(BaseModel):
     project_id: UUID | None = None
     owner_id: str | None = None
     search: str | None = None
+    triage: TriageFilter | None = None
 
 
 class ControlTowerResponse(BaseModel):
@@ -174,3 +192,18 @@ class ControlTowerResponse(BaseModel):
 
 class AcknowledgeRequest(BaseModel):
     note: str | None = Field(default=None, max_length=500)
+
+
+class TriageRequest(BaseModel):
+    action: Literal["investigate", "dismiss", "reopen"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ConvertRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ConvertResult(BaseModel):
+    recommendation_id: UUID
+    status: str
+    title: str

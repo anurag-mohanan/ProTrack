@@ -17,6 +17,7 @@ from app.core.permissions import (
 from app.core.team_access import team_member_user_ids
 from app.models.enums import ExecutionStatus, MilestoneStatus, TeamRelationshipType, TimesheetStatus
 from app.models.models import Activity, Milestone, Project, Team, TeamMember, Timesheet, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.kpi import AdministrationKpis, LeadershipScopeKpis, ManagementKpis
 from app.services.user_team_service import get_user_team_ids
 
@@ -180,6 +181,7 @@ def get_management_kpis(db: Session, user: User) -> ManagementKpis:
             .join(Project, Milestone.project_id == Project.id)
             .where(
                 Milestone.status != MilestoneStatus.completed,
+                Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                 Milestone.due_date.is_not(None),
                 Milestone.due_date <= today + timedelta(days=7),
                 Project.is_deleted.is_(False),

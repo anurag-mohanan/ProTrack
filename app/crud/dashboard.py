@@ -69,6 +69,7 @@ from app.services.dashboard_service import (
     safe_dashboard_call,
 )
 from app.services.notification_service import count_unread_notifications
+from app.services.milestone_lifecycle import active_milestone_clause
 from app.services.collaboration_service import get_collaboration_dashboard
 from app.services.engineering_insights_service import generate_engineering_insights
 from app.services.ai.context import build_ai_context, count_overdue_milestones
@@ -254,12 +255,12 @@ def get_dashboard_summary(
         db.scalar(
             select(func.count())
             .select_from(Milestone)
-            .where(Milestone.status == MilestoneStatus.completed)
+            .where(Milestone.status == MilestoneStatus.completed, active_milestone_clause())
         )
         or 0
     )
     total_milestones = int(
-        db.scalar(select(func.count()).select_from(Milestone)) or 0
+        db.scalar(select(func.count()).select_from(Milestone).where(active_milestone_clause())) or 0
     )
 
     if total_milestones == 0:
@@ -678,6 +679,7 @@ def _get_staff_metrics(db: Session, user: User) -> StaffDashboardMetrics | None:
         milestones = db.scalars(
             select(Milestone).where(
                 Milestone.project_id.in_(project_ids),
+                active_milestone_clause(),
                 Milestone.status != MilestoneStatus.completed,
             )
         ).all()
@@ -916,6 +918,7 @@ def get_workflow_dashboard(db: Session, user: User) -> WorkflowDashboard:
             select(Milestone)
             .where(
                 Milestone.project_id.in_(project_ids),
+                active_milestone_clause(),
                 Milestone.status != MilestoneStatus.completed,
             )
             .order_by(Milestone.due_date.asc())

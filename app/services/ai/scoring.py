@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from app.models.enums import ProjectHealth
 from app.models.models import Project
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.ai import CustomerIntelligence, ProjectHealthAnalysis
 from app.services.ai.base import AiContext, AiProvider, round_percent
 from app.services.project_calculation_service import calculate_project_health
@@ -46,6 +47,7 @@ class Scorer(AiProvider):
                 .select_from(Milestone)
                 .where(
                     Milestone.project_id == project.id,
+                    Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                     Milestone.status != MilestoneStatus.completed,
                     Milestone.due_date.is_not(None),
                     Milestone.due_date < ctx.today,

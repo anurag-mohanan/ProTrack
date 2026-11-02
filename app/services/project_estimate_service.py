@@ -38,6 +38,8 @@ from app.models.models import (
     TimesheetEntry,
     User,
 )
+from app.services.actual_hours import official_entry_clause
+from app.services.milestone_lifecycle import active_milestone_clause, is_active
 
 _CLOSED = {MilestoneStatus.completed, MilestoneStatus.cancelled, MilestoneStatus.not_applicable}
 OTHER_STAGE_KEY = "other"
@@ -118,7 +120,9 @@ def configure_stage_estimates(
         )
     add_initial_stage_estimates(db, project, stage_hours, created_by_id=user.id)
     milestones = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+        db.scalars(
+            select(Milestone).where(Milestone.project_id == project.id, active_milestone_clause())
+        ).all()
     )
     for stage in PLANNED_STAGES:
         rows = sorted(
@@ -165,7 +169,9 @@ def revise_stage_estimate(
     milestones = sorted(
         db.scalars(
             select(Milestone).where(
-                Milestone.project_id == project.id, Milestone.project_stage == stage
+                Milestone.project_id == project.id,
+                Milestone.project_stage == stage,
+                active_milestone_clause(),
             )
         ).all(),
         key=lambda row: row.sort_order,
@@ -249,10 +255,7 @@ def milestone_actual_hours(db: Session, milestone_ids: list[UUID]) -> dict[UUID,
         return {}
     rows = db.execute(
         select(TimesheetEntry.milestone_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(
-            TimesheetEntry.milestone_id.in_(milestone_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.milestone_id.in_(milestone_ids), official_entry_clause())
         .group_by(TimesheetEntry.milestone_id)
     ).all()
     return {milestone_id: _q2(hours or 0) for milestone_id, hours in rows}
@@ -263,7 +266,7 @@ def unassigned_actual_hours(db: Session, project_id: UUID) -> Decimal:
         select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
             TimesheetEntry.project_id == project_id,
             TimesheetEntry.milestone_id.is_(None),
-            TimesheetEntry.is_deleted.is_(False),
+            official_entry_clause(),
         )
     )
     return _q2(value or 0)
@@ -299,6 +302,10 @@ def stage_breakdown(db: Session, project: Project, *, today: date | None = None)
         line = lines[key]
         planned = _q2(row.planned_hours or 0)
         actual = actuals.get(row.id, Decimal("0.00"))
+        if not is_active(row):
+            # Hours booked on merged/superseded records still count; their plan does not.
+            line.actual_hours = _q2(line.actual_hours + actual)
+            continue
         remaining = Decimal("0.00") if row.status in _CLOSED else max(planned - actual, Decimal("0"))
         due = row.baseline_finish_date or row.due_date
         overdue = row.status not in _CLOSED and due is not None and due < today

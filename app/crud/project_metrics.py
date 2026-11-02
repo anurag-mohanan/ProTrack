@@ -13,11 +13,7 @@ from app.services.project_calculation_service import (
     calculate_hours,
     calculate_progress,
 )
-from app.services.project_template_service import (
-    can_change_project_template,
-    projects_with_logged_milestone_hours,
-    template_change_blocked_reason,
-)
+from app.services.project_template_service import can_change_project_template
 
 
 def _batch_workstream_summaries(
@@ -208,7 +204,7 @@ def build_project_read(db: Session, project: Project) -> ProjectRead:
     milestone_names = _batch_current_milestones(db, [project.id])
     names = _batch_display_names(db, [project])
     workstreams = _batch_workstream_summaries(db, [project.id])
-    can_change, blocked_reason = can_change_project_template(db, project.id)
+    can_change, blocked_reason = can_change_project_template(project)
     gaps = project_setup_gaps(project)
     return ProjectRead.model_validate(project, from_attributes=True).model_copy(
         update={
@@ -251,14 +247,9 @@ def build_project_reads(db: Session, projects: list[Project]) -> list[ProjectRea
     names = _batch_display_names(db, projects)
     workstreams = _batch_workstream_summaries(db, project_ids)
     configured = _batch_stage_estimate_flags(db, project_ids)
-    logged_hours = projects_with_logged_milestone_hours(db, project_ids)
     reads: list[ProjectRead] = []
     for project in projects:
-        blocked_reason = template_change_blocked_reason(
-            has_completed_milestones=progress_by_project[project.id].completed_milestones > 0,
-            has_logged_hours=project.id in logged_hours,
-        )
-        can_change = blocked_reason is None
+        can_change, blocked_reason = can_change_project_template(project)
         gaps = project_setup_gaps(project)
         reads.append(
             ProjectRead.model_validate(project, from_attributes=True).model_copy(

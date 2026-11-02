@@ -38,6 +38,7 @@ import { userDisplayName } from '../../utils/format';
 import { optionalString, optionalUuid, optionalNumber, isBlankDisplayValue } from '../../utils/formValues';
 import { validateProjectFormRequired } from '../../utils/projectFormValidation';
 import { ChangeProjectTemplateDialog } from './ChangeProjectTemplateDialog';
+import { summarizeReconciliation } from '../../services/templateReconciliationService';
 import { ProjectDocumentsPanel } from './ProjectDocumentsPanel';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ProsohmButton } from '../ui/ProsohmButton';
@@ -1613,7 +1614,7 @@ export function ProjectFormDialog({
               {project.can_change_template === false ? (
                 <Alert severity="info" sx={{ mb: 1.5 }}>
                   {project.template_change_blocked_reason ??
-                    'Template cannot be changed after milestone work has started.'}
+                    'The template cannot be changed on this project.'}
                 </Alert>
               ) : null}
               <ProsohmButton
@@ -1752,8 +1753,8 @@ export function ProjectFormDialog({
         canChangeTemplate={project.can_change_template ?? true}
         blockedReason={project.template_change_blocked_reason}
         onClose={() => setChangeTemplateOpen(false)}
-        onApplied={() => {
-          showSuccess('Project template changed. Milestones were regenerated.');
+        onApplied={(result) => {
+          showSuccess(summarizeReconciliation(result));
           setChangeTemplateOpen(false);
           void queryClient.invalidateQueries({ queryKey: ['projects'] });
           onUpdated?.(project.id);

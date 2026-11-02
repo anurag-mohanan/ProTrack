@@ -716,8 +716,8 @@ def evaluate_project(
                     explanation=(
                         f"{actual.total_hours} h are recorded against an approved estimate of "
                         f"{estimate.current_estimate_hours} h ({estimate.estimate_source_label.lower()}). "
-                        "This is a realized overrun from recorded hours, not a forecast. Draft, submitted and "
-                        "rejected hours count under the current project rule."
+                        "This is a realized overrun from approved timesheet hours, not a forecast. Submitted, "
+                        "draft and rejected hours are not included."
                     ),
                     metrics={
                         "basis": "realized",

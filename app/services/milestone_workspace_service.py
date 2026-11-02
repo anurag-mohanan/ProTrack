@@ -13,6 +13,7 @@ from app.models.enums import ActivityAction, EntityType, MilestoneStatus
 from app.models.models import Milestone, Project, TimesheetEntry, User
 from app.schemas.project import MilestoneRead, ProjectMilestoneSummary
 from app.services.activity_service import log_activity
+from app.services.actual_hours import official_entry_clause
 
 
 def _decimal(value) -> Decimal:
@@ -27,10 +28,7 @@ def batch_milestone_actual_hours(
         return {}
     rows = db.execute(
         select(TimesheetEntry.milestone_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(
-            TimesheetEntry.milestone_id.in_(milestone_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.milestone_id.in_(milestone_ids), official_entry_clause())
         .group_by(TimesheetEntry.milestone_id)
     ).all()
     return {row[0]: _decimal(row[1]) for row in rows if row[0] is not None}
@@ -47,7 +45,7 @@ def enrich_milestone_read(
             db.scalar(
                 select(func.coalesce(func.sum(TimesheetEntry.hours), 0)).where(
                     TimesheetEntry.milestone_id == milestone.id,
-                    TimesheetEntry.is_deleted.is_(False),
+                    official_entry_clause(),
                 )
             )
         )

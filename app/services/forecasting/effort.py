@@ -319,7 +319,7 @@ def build_engineering_forecast(
                 "Existing provisional stage-plan schedule (shown, not used)",
             ],
             assumptions=[
-                "Actual hours follow the current project rule: draft, submitted and rejected hours count; the split is shown per project.",
+                "Actual hours are approved timesheet hours; submitted hours are provisional and, with draft and rejected hours, are not counted.",
                 "Future projects overrun or underrun their original approved estimate in the same median proportion as past completed projects.",
                 "Milestone completion percentage is not used as effort completion.",
             ],

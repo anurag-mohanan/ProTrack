@@ -28,6 +28,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/organization': 'Organization Chart',
   '/skills': 'Engineering Skills',
   '/assistant': 'ProTrack Assistant',
+  '/predictive': 'Predictive Intelligence',
   '/reports': 'Reports',
   '/profile': 'My Profile',
   '/admin/dashboard': 'Admin Dashboard',

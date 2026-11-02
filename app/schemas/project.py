@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import (
     ExecutionStatus,
@@ -336,6 +336,29 @@ class MilestoneRead(MilestoneBase, TimestampSchema):
     override_finish_date: date | None = None
     override_reason: str | None = None
     template_milestone_id: UUID | None = None
+    depends_on_ids: list[UUID] = Field(default_factory=list)
+    # active | merged | superseded | archived. Only active milestones count in progress.
+    lifecycle_state: str = "active"
+    merged_into_id: UUID | None = None
+    lifecycle_reason: str | None = None
+    lifecycle_changed_at: datetime | None = None
+
+    @field_validator("depends_on_ids", mode="before")
+    @classmethod
+    def _parse_depends_on(cls, value: object) -> object:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            from app.services.scheduling_service import parse_id_list
+
+            ids = []
+            for item in parse_id_list(value):
+                try:
+                    ids.append(UUID(item))
+                except ValueError:
+                    continue
+            return ids
+        return value
 
 
 class MilestoneReorderItem(BaseModel):

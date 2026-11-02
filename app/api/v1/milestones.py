@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import func, select
+
 from app.api.auth_deps import get_current_user
 from app.api.deps import (
     APIRouter,
@@ -21,6 +23,7 @@ from app.core.permissions import (
 )
 from app.crud.milestone import milestone
 from app.models.models import Milestone, Project, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.project import (
     MilestoneCreate,
     MilestoneRead,
@@ -58,6 +61,9 @@ def list_milestones(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     filters: MilestoneFilters = Depends(),
+    include_inactive: bool = Query(
+        False, description="Include merged, superseded and archived milestones (history)."
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -66,6 +72,8 @@ def list_milestones(
         for key, value in filters.model_dump().items()
         if value is not None
     }
+    if not include_inactive:
+        active_filters["lifecycle_state"] = LIFECYCLE_ACTIVE
     if filters.project_id is not None:
         db_project = db.get(Project, filters.project_id)
         if db_project is None:
@@ -154,6 +162,11 @@ def update_milestone(
         allowed = False
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    if (db_obj.lifecycle_state or LIFECYCLE_ACTIVE) != LIFECYCLE_ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This milestone is {db_obj.lifecycle_state} and kept as history; it cannot be edited.",
+        )
     try:
         updated = milestone.update(db, db_obj=db_obj, obj_in=obj_in, actor=current_user)
     except ProTrackValidationError as exc:
@@ -172,4 +185,14 @@ def delete_milestone(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     if not can_write_milestones(db, current_user, db_obj.project):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    if (db_obj.lifecycle_state or LIFECYCLE_ACTIVE) != LIFECYCLE_ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This milestone is {db_obj.lifecycle_state} and kept as history; it cannot be deleted.",
+        )
+    if db.scalar(select(func.count()).select_from(Milestone).where(Milestone.merged_into_id == db_obj.id)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Other milestones were merged into this one; it cannot be deleted.",
+        )
     milestone.delete(db, record_id=record_id, actor=current_user)

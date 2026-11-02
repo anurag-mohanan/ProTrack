@@ -728,7 +728,7 @@ def _apply_milestone_history(
 ) -> None:
     milestones = db.scalars(
         select(Milestone)
-        .where(Milestone.project_id == project.id)
+        .where(Milestone.project_id == project.id, Milestone.lifecycle_state == "active")
         .order_by(Milestone.sort_order)
     ).all()
     summary.milestones_created += len(milestones)

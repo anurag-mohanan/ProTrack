@@ -175,7 +175,7 @@ def list_project_milestones(
     rows = list(
         db.scalars(
             select(Milestone)
-            .where(Milestone.project_id == project_id)
+            .where(Milestone.project_id == project_id, Milestone.lifecycle_state == "active")
             .order_by(Milestone.name)
             .limit(500)
         ).all()

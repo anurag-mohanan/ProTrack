@@ -34,9 +34,11 @@ import { getErrorMessage } from '../../api/client';
 import {
   acknowledgeControlTowerFinding,
   controlTowerQueryKeys,
+  convertControlTowerFinding,
   evaluateControlTower,
   fetchControlTower,
   fetchControlTowerFinding,
+  triageControlTowerFinding,
 } from '../../api/controlTower';
 import { useToast } from '../../context/ToastContext';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
@@ -52,6 +54,8 @@ import type {
   CtRule,
   CtSeverity,
   CtState,
+  CtTriageAction,
+  CtTriageFilter,
   CtView,
 } from '../../types/ControlTower';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, ensureArray } from '../../types/pagination';
@@ -73,6 +77,13 @@ const CATEGORY_LABELS: Record<CtCategory, string> = {
   delivery: 'Project delivery',
   data_quality: 'Data quality',
   capability: 'Skills capability',
+  resource: 'Resource capacity',
+};
+
+const TRIAGE_LABELS: Record<CtTriageFilter, string> = {
+  untriaged: 'Not triaged',
+  investigating: 'Investigating',
+  dismissed: 'Dismissed',
 };
 
 const STATUS_LABELS: Record<CtFindingStatus, string> = {
@@ -97,6 +108,10 @@ const EVENT_LABELS: Record<string, string> = {
   reassessed: 'Assessable again',
   resolved: 'Resolved',
   acknowledged: 'Acknowledged',
+  investigating: 'Marked as investigating',
+  dismissed: 'Dismissed',
+  triage_cleared: 'Triage cleared',
+  converted: 'Recorded as a recommendation',
 };
 
 /** Backend timestamps are UTC without an offset. */
@@ -135,12 +150,39 @@ function FindingDetailRow({
     },
     onError: (error: unknown) => showError(getErrorMessage(error)),
   });
+  const [triageNote, setTriageNote] = useState('');
+  const triageMutation = useMutation({
+    mutationFn: (action: CtTriageAction) => triageControlTowerFinding(finding.id, action, triageNote),
+    onSuccess: (_, action) => {
+      showSuccess(action === 'dismiss' ? 'Finding dismissed' : action === 'investigate' ? 'Marked as investigating' : 'Triage cleared');
+      setTriageNote('');
+      void queryClient.invalidateQueries({ queryKey: controlTowerQueryKeys.all });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
+  const convertMutation = useMutation({
+    mutationFn: () => convertControlTowerFinding(finding.id, triageNote),
+    onSuccess: () => {
+      showSuccess('Recorded as a recommendation for review');
+      setTriageNote('');
+      void queryClient.invalidateQueries({ queryKey: controlTowerQueryKeys.all });
+    },
+    onError: (error: unknown) => showError(getErrorMessage(error)),
+  });
   const canAck = canAcknowledge && finding.status !== 'resolved' && !finding.acknowledged_at;
+  const canTriage = canAcknowledge && finding.status !== 'resolved';
+  const busy = triageMutation.isPending || convertMutation.isPending;
   return (
     <TableRow>
       <TableCell colSpan={colSpan} sx={{ bgcolor: 'action.hover', py: 2 }}>
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '3fr 2fr' } }}>
           <Stack spacing={1.5}>
+            {finding.source === 'predictive' ? (
+              <Alert severity="info" variant="outlined">
+                Forecast, not an actual: based on comparable completed work. No dates, estimates or assignments have
+                been changed.
+              </Alert>
+            ) : null}
             <Typography variant="body2">{finding.explanation}</Typography>
             {finding.not_assessable_reason ? (
               <Alert severity="warning" variant="outlined">
@@ -207,6 +249,55 @@ function FindingDetailRow({
                 <Button variant="outlined" onClick={() => ackMutation.mutate()} disabled={ackMutation.isPending}>
                   Acknowledge
                 </Button>
+              </Stack>
+            ) : null}
+            {finding.triage_status ? (
+              <Typography variant="body2">
+                {TRIAGE_LABELS[finding.triage_status]} — {finding.triaged_by_name ?? 'unknown user'} on {utc(finding.triaged_at)}
+                {finding.triage_note ? ` — “${finding.triage_note}”` : ''}
+              </Typography>
+            ) : null}
+            {finding.recommendation_id ? (
+              <Typography variant="body2">Recorded as a recommendation for review.</Typography>
+            ) : null}
+            {canTriage ? (
+              <Stack spacing={1}>
+                <TextField
+                  size="small"
+                  label="Triage note (required to dismiss)"
+                  value={triageNote}
+                  onChange={(event) => setTriageNote(event.target.value)}
+                  slotProps={{ htmlInput: { maxLength: 500 } }}
+                  fullWidth
+                />
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                  {finding.triage_status !== 'investigating' ? (
+                    <Button size="small" variant="outlined" disabled={busy} onClick={() => triageMutation.mutate('investigate')}>
+                      Investigate
+                    </Button>
+                  ) : null}
+                  {finding.triage_status !== 'dismissed' ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      disabled={busy || !triageNote.trim()}
+                      onClick={() => triageMutation.mutate('dismiss')}
+                    >
+                      Dismiss
+                    </Button>
+                  ) : null}
+                  {finding.triage_status ? (
+                    <Button size="small" disabled={busy} onClick={() => triageMutation.mutate('reopen')}>
+                      Clear triage
+                    </Button>
+                  ) : null}
+                  {!finding.recommendation_id ? (
+                    <Button size="small" variant="contained" disabled={busy} onClick={() => convertMutation.mutate()}>
+                      Create workflow action
+                    </Button>
+                  ) : null}
+                </Stack>
               </Stack>
             ) : null}
             <Box>
@@ -330,6 +421,10 @@ function FindingsTable({
                           label={STATUS_LABELS[finding.status]}
                           color={finding.status === 'not_assessable' ? 'warning' : finding.status === 'resolved' ? 'success' : 'default'}
                         />
+                        {finding.source === 'predictive' ? <Chip size="small" color="secondary" variant="outlined" label="Forecast" /> : null}
+                        {finding.triage_status ? (
+                          <Chip size="small" variant="outlined" label={TRIAGE_LABELS[finding.triage_status]} />
+                        ) : null}
                         {finding.acknowledged_at ? <Chip size="small" variant="outlined" label="Acknowledged" /> : null}
                         {finding.is_recurrence ? <Chip size="small" variant="outlined" label="Recurred" /> : null}
                       </Stack>
@@ -415,6 +510,7 @@ export function ControlTowerPanel() {
   const [status, setStatus] = useState<CtFindingStatus | ''>('');
   const [projectId, setProjectId] = useState('');
   const [ownerId, setOwnerId] = useState('');
+  const [triage, setTriage] = useState<CtTriageFilter | ''>('');
   const [searchInput, setSearchInput] = useState('');
   const search = useDebouncedValue(searchInput.trim(), 300);
   const [page, setPage] = useState(1);
@@ -428,6 +524,7 @@ export function ControlTowerPanel() {
     project_id: projectId || undefined,
     owner_id: ownerId || undefined,
     search: search || undefined,
+    triage: view === 'resolved' ? undefined : triage || undefined,
     page,
     page_size: pageSize,
   };
@@ -461,13 +558,14 @@ export function ControlTowerPanel() {
     if (!next) return;
     setView(next);
     setStatus('');
+    if (next === 'resolved') setTriage('');
     setCategory(next === 'data_quality' ? '' : category === 'data_quality' ? '' : category);
     setSeverity(next === 'data_quality' ? '' : severity);
     setPage(1);
   };
 
   const data = query.data;
-  const filtersActive = Boolean(severity || category || status || projectId || ownerId || search);
+  const filtersActive = Boolean(severity || category || status || projectId || ownerId || search || triage);
 
   if (query.isError && !data) {
     return (
@@ -497,7 +595,7 @@ export function ControlTowerPanel() {
         >
           <SectionTitle
             title="Engineering Control Tower"
-            subtitle="Deterministic risk and data-quality findings for open projects. Nothing here changes estimates, dates, assignments or statuses."
+            subtitle="Deterministic risk and data-quality findings for open projects, with forecast findings kept separate. Nothing here changes estimates, dates, assignments or statuses."
           />
           {data.can_evaluate ? (
             <Button
@@ -532,7 +630,7 @@ export function ControlTowerPanel() {
       </Paper>
 
       {evaluationUnavailable ? null : (
-        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(7, minmax(0, 1fr))' } }}>
+        <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(8, minmax(0, 1fr))' } }}>
           {(['critical', 'high', 'medium'] as CtSeverity[]).map((key) => (
             <KpiCard
               key={key}
@@ -548,6 +646,13 @@ export function ControlTowerPanel() {
             />
           ))}
           <KpiCard label="Projects with risks" value={String(summary.projects_with_risks)} />
+          <KpiCard
+            label="Forecast findings"
+            value={String(summary.open_predictive)}
+            caption="Not certainties"
+            selected={view === 'predictive'}
+            onClick={() => changeView(null, 'predictive')}
+          />
           <KpiCard
             label="Data-quality items"
             value={String(summary.open_data_quality)}
@@ -573,10 +678,18 @@ export function ControlTowerPanel() {
         <Stack spacing={1.5}>
           <ToggleButtonGroup size="small" exclusive value={view} onChange={changeView} aria-label="Finding view">
             <ToggleButton value="risks">Risks ({summary.open_risks})</ToggleButton>
+            <ToggleButton value="predictive">Forecasts ({summary.open_predictive})</ToggleButton>
             <ToggleButton value="data_quality">Data quality ({summary.open_data_quality})</ToggleButton>
             <ToggleButton value="resolved">Resolved</ToggleButton>
           </ToggleButtonGroup>
-          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(6, minmax(0, 1fr))' } }}>
+          {view === 'predictive' ? (
+            <Alert severity="info" variant="outlined">
+              Forecast findings come from the latest stored predictions (made in the last 8 days) and are never shown
+              for a condition that is already true — that appears under Risks instead. Projects without enough
+              comparable history get no forecast and so no finding.
+            </Alert>
+          ) : null}
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(7, minmax(0, 1fr))' } }}>
             <TextField
               select
               size="small"
@@ -620,6 +733,22 @@ export function ControlTowerPanel() {
               <MenuItem value="">All open</MenuItem>
               <MenuItem value="active">Active</MenuItem>
               <MenuItem value="not_assessable">Not assessable</MenuItem>
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Triage"
+              value={triage}
+              onChange={(event) => resetPage(setTriage)(event.target.value as CtTriageFilter | '')}
+              disabled={view === 'resolved'}
+              helperText={summary.dismissed && view !== 'resolved' ? `${summary.dismissed} dismissed hidden` : undefined}
+            >
+              <MenuItem value="">All except dismissed</MenuItem>
+              {(Object.keys(TRIAGE_LABELS) as CtTriageFilter[]).map((key) => (
+                <MenuItem key={key} value={key}>
+                  {TRIAGE_LABELS[key]}
+                </MenuItem>
+              ))}
             </TextField>
             <TextField
               select
@@ -669,6 +798,7 @@ export function ControlTowerPanel() {
                   setStatus('');
                   setProjectId('');
                   setOwnerId('');
+                  setTriage('');
                   setSearchInput('');
                   setPage(1);
                 }}

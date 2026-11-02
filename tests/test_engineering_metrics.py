@@ -180,12 +180,12 @@ def test_complete_project_metrics_and_stage_hours(client, session):
     assert _d(body["estimate"]["original_estimate_hours"]) == Decimal("90")
     assert _d(body["estimate"]["current_estimate_hours"]) == Decimal("90")
     assert body["actual"]["status"] == "recorded"
-    assert _d(body["actual"]["total_hours"]) == Decimal("50")
+    assert _d(body["actual"]["total_hours"]) == Decimal("30")  # submitted 20 h are provisional
     assert _d(body["actual"]["approved_hours"]) == Decimal("30")
     assert _d(body["actual"]["submitted_hours"]) == Decimal("20")
-    assert _d(body["variance_hours"]["value"]) == Decimal("-40")
-    assert _d(body["utilization_percent"]["value"]) == Decimal("55.56")
-    assert _d(body["remaining_hours"]["value"]) == Decimal("40")
+    assert _d(body["variance_hours"]["value"]) == Decimal("-60")
+    assert _d(body["utilization_percent"]["value"]) == Decimal("33.33")
+    assert _d(body["remaining_hours"]["value"]) == Decimal("60")
 
     stage = body["stage_attribution"]
     assert stage["status"] == "complete"
@@ -193,11 +193,11 @@ def test_complete_project_metrics_and_stage_hours(client, session):
     by_key = {row["key"]: row for row in stage["rows"]}
     assert _d(by_key["preliminary"]["actual_hours"]) == Decimal("30")
     assert _d(by_key["preliminary"]["variance_hours"]) == Decimal("-10")
-    assert _d(by_key["intermediate"]["actual_hours"]) == Decimal("20")
+    assert _d(by_key["intermediate"]["actual_hours"]) == Decimal("0")
     assert _d(by_key["final"]["actual_hours"]) == Decimal("0")
 
     codes = {issue["code"] for issue in body["issues"]}
-    assert "includes_unapproved_hours" in codes
+    assert "provisional_hours_pending" in codes
     assert "quote_unlinked" in codes
     assert body["data_quality_status"] == "available"
     assert body["milestones"]["baseline_completion_date"] is not None
@@ -251,16 +251,17 @@ def test_status_rules_deleted_entries_and_join_duplication(client, session):
     session.commit()
 
     body = _get(client, project_id)
-    expected_total = Decimal("51.75")  # 30 + 12.5 + 5 rejected + 4.25 draft; deleted 7 excluded
+    expected_total = Decimal("42.5")  # approved 30 + 12.5; rejected 5, draft 4.25 and deleted 7 excluded
     assert _d(body["actual"]["total_hours"]) == expected_total
+    assert _d(body["actual"]["billable_hours"]) == expected_total
     assert _d(body["actual"]["rejected_hours"]) == Decimal("5")
     assert _d(body["actual"]["draft_hours"]) == Decimal("4.25")
     status_sum = sum(
         _d(body["actual"][key]) for key in
         ("approved_hours", "submitted_hours", "draft_hours", "rejected_hours")
     )
-    assert status_sum == expected_total
-    assert body["actual"]["entry_count"] == 8  # 4 + 2 + 1 + 1 daily entries
+    assert status_sum == Decimal("51.75")  # the status breakdown still shows every non-deleted hour
+    assert body["actual"]["entry_count"] == 6  # 4 + 2 approved daily entries
 
     # Same rule as the project page and the contributors panel.
     session.expire_all()
@@ -270,7 +271,7 @@ def test_status_rules_deleted_entries_and_join_duplication(client, session):
     assert sum(Decimal(str(c.total_hours)) for c in contributors) == expected_total
 
     stage = body["stage_attribution"]
-    assert stage["status"] == "partial"
+    assert stage["status"] == "complete"
     stage_sum = sum(_d(row["actual_hours"]) for row in stage["rows"])
     unattributed = sum(
         _d(stage[key]) for key in
@@ -278,11 +279,10 @@ def test_status_rules_deleted_entries_and_join_duplication(client, session):
     )
     assert stage_sum == Decimal("42.5")
     assert stage_sum + unattributed == expected_total
-    assert _d(stage["no_milestone_hours"]) == Decimal("9.25")
+    assert _d(stage["no_milestone_hours"]) == Decimal("0")
 
     codes = {issue["code"]: issue for issue in body["issues"]}
-    assert codes["includes_rejected_hours"]["severity"] == "warning"
-    assert "stage_attribution_partial" in codes
+    assert codes["unapproved_hours_excluded"]["severity"] == "info"
     assert "quote_link_ambiguous" in codes
     assert body["quote_linkage"]["status"] == "ambiguous"
     assert body["data_quality_status"] == "available_with_limitations"

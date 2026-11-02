@@ -25,6 +25,7 @@ from app.models.models import (
     TimesheetEntry,
     User,
 )
+from app.services.milestone_lifecycle import active_milestone_clause
 from app.schemas.reporting import (
     ChartSeries,
     CustomerHoursRow,
@@ -1137,6 +1138,7 @@ def _quoted_vs_actual(
                 .select_from(Milestone)
                 .where(
                     Milestone.project_id == row.project_id,
+                    active_milestone_clause(),
                     Milestone.status != MilestoneStatus.completed,
                     Milestone.due_date.is_not(None),
                     Milestone.due_date < today,

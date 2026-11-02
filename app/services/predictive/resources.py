@@ -18,9 +18,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import TimesheetStatus
 from app.models.models import Team, Timesheet, TimesheetEntry, User
 from app.models.prediction import PREDICTED
+from app.services.actual_hours import official_entry_clause
 from app.services.forecasting.capacity import day_capacity
 from app.services.holiday_service import load_holiday_dates
 from app.services.kpi_participation import capacity_planning_users
@@ -76,7 +76,7 @@ class ProjectDemand:
 
 
 def non_project_shares(db: Session, user_ids: list[UUID], as_of: date) -> dict[UUID, tuple[Decimal | None, int]]:
-    """Share of booked hours (not rejected) not on a project, over the previous 12 weeks."""
+    """Share of approved booked hours not on a project, over the previous 12 weeks."""
     start = as_of - timedelta(days=LOOKBACK_DAYS)
     totals: dict[UUID, list[Decimal]] = defaultdict(lambda: [ZERO, ZERO])
     weeks: dict[UUID, set[date]] = defaultdict(set)
@@ -86,8 +86,7 @@ def non_project_shares(db: Session, user_ids: list[UUID], as_of: date) -> dict[U
             .join(Timesheet, Timesheet.id == TimesheetEntry.timesheet_id)
             .where(
                 Timesheet.user_id.in_(user_ids),
-                Timesheet.status != TimesheetStatus.rejected,
-                TimesheetEntry.is_deleted.is_(False),
+                official_entry_clause(),
                 TimesheetEntry.entry_date > start,
                 TimesheetEntry.entry_date <= as_of,
             )

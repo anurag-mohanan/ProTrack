@@ -13,6 +13,7 @@ from app.models.enums import ExecutionStatus, MilestoneStatus, TimesheetStatus
 from app.models.intelligence import EngineeringChange
 from app.models.enums import EngineeringChangeStatus
 from app.models.models import Customer, Milestone, Project, Role, Timesheet, TimesheetEntry, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from datetime import date
 
 from app.models.models import User
@@ -99,6 +100,7 @@ def count_overdue_milestones(ctx: AiContext) -> int:
                 Project.is_deleted.is_(False),
                 Project.is_archived.is_(False),
                 Project.execution_status.in_(ACTIVE_STATUSES),
+                Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                 Milestone.status != MilestoneStatus.completed,
                 Milestone.due_date.is_not(None),
                 Milestone.due_date < ctx.today,
@@ -218,6 +220,7 @@ def get_stale_milestones(ctx: AiContext, *, days: int = 7) -> int:
                 Project.is_deleted.is_(False),
                 Project.is_archived.is_(False),
                 Project.execution_status.in_(ACTIVE_STATUSES),
+                Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                 Milestone.status != MilestoneStatus.completed,
                 Milestone.updated_at < cutoff,
             )

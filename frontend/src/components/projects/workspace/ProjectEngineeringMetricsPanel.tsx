@@ -257,21 +257,20 @@ export function ProjectEngineeringMetricsPanel({ projectId }: { projectId: strin
   const definition = (key: string) => data.definitions.find((item) => item.key === key)?.definition;
   const chip = QUALITY_CHIP[data.data_quality_status];
   const { actual, estimate, stage_attribution: stages, milestones, quote_linkage: quote } = data;
-  const pendingHours = Number(actual.draft_hours) + Number(actual.submitted_hours);
-  const actualHint =
+  const actualHint = [
     actual.status === 'missing'
-      ? 'No timesheet hours recorded although work has been completed.'
+      ? 'No approved timesheet hours although work has been completed'
       : actual.status === 'none_recorded'
-        ? 'No hours booked yet.'
-        : [
-            `${formatNumber(actual.approved_hours, 1)} h approved`,
-            pendingHours > 0 ? `${formatNumber(pendingHours, 1)} h not yet approved` : null,
-            Number(actual.rejected_hours) > 0
-              ? `${formatNumber(actual.rejected_hours, 1)} h on rejected timesheets`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
+        ? 'No approved hours yet'
+        : `Approved timesheets · ${formatNumber(actual.billable_hours, 1)} h billable`,
+    Number(actual.submitted_hours) > 0
+      ? `${formatNumber(actual.submitted_hours, 1)} h provisional (submitted, awaiting approval)`
+      : null,
+    Number(actual.draft_hours) > 0 ? `${formatNumber(actual.draft_hours, 1)} h draft (not counted)` : null,
+    Number(actual.rejected_hours) > 0 ? `${formatNumber(actual.rejected_hours, 1)} h rejected (not counted)` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const quoteText =
     quote.status === 'unlinked'
       ? 'No active Finance quote linked'

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.models import Milestone, Project
+from app.models.workflow import LIFECYCLE_ACTIVE
 
 
 def is_feasibility_milestone(name: str) -> bool:
@@ -27,7 +28,11 @@ def sync_milestone_assignments(db: Session, project_id: UUID) -> int:
         return 0
 
     milestones = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+        db.scalars(
+            select(Milestone).where(
+                Milestone.project_id == project_id, Milestone.lifecycle_state == LIFECYCLE_ACTIVE
+            )
+        ).all()
     )
     updated = 0
     for row in milestones:

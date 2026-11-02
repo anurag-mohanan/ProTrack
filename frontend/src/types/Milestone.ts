@@ -18,6 +18,13 @@ export interface Milestone extends Timestamped {
   qa_gate_required?: boolean;
   is_required?: boolean;
   project_stage?: string | null;
+  template_milestone_id?: string | null;
+  depends_on_ids?: string[];
+  /** active | merged | superseded | archived. Only active milestones count in progress and reports. */
+  lifecycle_state?: 'active' | 'merged' | 'superseded' | 'archived';
+  merged_into_id?: string | null;
+  lifecycle_reason?: string | null;
+  lifecycle_changed_at?: string | null;
 }
 
 export interface MilestoneUpdate {

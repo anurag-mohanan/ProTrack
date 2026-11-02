@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import ExecutionStatus, MilestoneStatus, ProjectHealth, PostCompletionWorkType
 from app.models.models import Milestone, Project, TimesheetEntry
+from app.services.milestone_lifecycle import active_milestone_clause
 
 
 def _round_percent(value: Decimal) -> Decimal:
@@ -57,6 +58,7 @@ def _milestone_counts(db: Session, project_id: UUID) -> tuple[int, int]:
             .select_from(Milestone)
             .where(
                 Milestone.project_id == project_id,
+                active_milestone_clause(),
                 Milestone.status == MilestoneStatus.completed,
             )
         )
@@ -66,7 +68,7 @@ def _milestone_counts(db: Session, project_id: UUID) -> tuple[int, int]:
         db.scalar(
             select(func.count())
             .select_from(Milestone)
-            .where(Milestone.project_id == project_id)
+            .where(Milestone.project_id == project_id, active_milestone_clause())
         )
         or 0
     )
@@ -86,7 +88,7 @@ def batch_calculate_progress(
             func.count(),
             func.count().filter(Milestone.status == MilestoneStatus.completed),
         )
-        .where(Milestone.project_id.in_(project_ids))
+        .where(Milestone.project_id.in_(project_ids), active_milestone_clause())
         .group_by(Milestone.project_id)
     ).all()
 
@@ -175,6 +177,7 @@ def calculate_project_health(
                 .select_from(Milestone)
                 .where(
                     Milestone.project_id == project.id,
+                    active_milestone_clause(),
                     Milestone.status != MilestoneStatus.completed,
                     Milestone.due_date.is_not(None),
                     Milestone.due_date < today,

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.models.enums import ExecutionStatus, MilestoneStatus
 from app.models.models import Milestone, Project
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.ai import CapacityForecast, SchedulePrediction
 from app.services.ai.base import AiContext, AiProvider, confidence_from_sample_size, round_hours
 from app.services.ai.context import get_active_projects, get_designer_utilization
@@ -26,6 +27,7 @@ class Forecaster(AiProvider):
             ctx.db.scalars(
                 select(Milestone).where(
                     Milestone.project_id == project.id,
+                    Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
                     Milestone.status != MilestoneStatus.completed,
                 )
             ).all()

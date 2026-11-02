@@ -89,11 +89,14 @@ def _sync_milestones(
     milestones: list[ProjectTemplateMilestoneCreate],
     *,
     keep_ids: bool,
+    lineage_from: dict[UUID, UUID] | None = None,
 ) -> None:
     """Upsert milestones by id, delete removed rows, then resolve dependencies.
 
     ``keep_ids=False`` (new version / new template) always inserts fresh rows and
     maps incoming ids to the new rows so dependencies are preserved.
+    ``lineage_from`` maps source row ids to their lineage so a new version keeps
+    each milestone's stable identity across versions; other new rows start a lineage.
     """
     _validate_milestone_payload(milestones)
     existing = {row.id: row for row in template.milestones} if keep_ids else {}
@@ -111,6 +114,8 @@ def _sync_milestones(
         row = existing.get(item.id) if item.id is not None else None
         if row is None:
             row = ProjectTemplateMilestone(project_template_id=template.id, **values)
+            if lineage_from and item.id is not None:
+                row.lineage_id = lineage_from.get(item.id)
             db.add(row)
         else:
             for field, value in values.items():
@@ -121,6 +126,9 @@ def _sync_milestones(
         if item.client_key:
             key_to_row[item.client_key] = row
     db.flush()
+    for _item, row in rows_in_order:
+        if row.lineage_id is None:
+            row.lineage_id = row.id
 
     dependency_map: dict[str, list[str]] = {}
     for item, row in rows_in_order:
@@ -514,7 +522,13 @@ class CRUDProjectTemplate(
                 )
                 for row in sorted(source.milestones, key=lambda item: item.sort_order)
             ]
-        _sync_milestones(db, revision, milestones, keep_ids=False)
+        _sync_milestones(
+            db,
+            revision,
+            milestones,
+            keep_ids=False,
+            lineage_from={row.id: row.lineage_id or row.id for row in source.milestones},
+        )
         if activate:
             self._deactivate_siblings(db, revision)
         return revision

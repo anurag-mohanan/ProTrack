@@ -180,6 +180,7 @@ export interface ProjectEngineeringMetrics {
   actual: {
     status: 'recorded' | 'none_recorded' | 'missing';
     total_hours: Hours | null;
+    billable_hours: Hours | null;
     entry_count: number;
     before_completion_hours: Hours;
     post_completion_hours: Hours;

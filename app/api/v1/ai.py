@@ -228,6 +228,8 @@ def ai_chat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Answers from org-wide data (utilisation, all projects): same audience as the other manager AI views.
+    _require_manager_access(db, current_user)
     return ai_engine.run(
         "chat_assistant",
         db,

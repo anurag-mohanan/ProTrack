@@ -40,6 +40,7 @@ class EstimateMetrics(BaseModel):
 class ActualHoursMetrics(BaseModel):
     status: Literal["recorded", "none_recorded", "missing"]
     total_hours: Decimal | None = None
+    billable_hours: Decimal | None = None
     entry_count: int = 0
     before_completion_hours: Decimal = Decimal("0")
     post_completion_hours: Decimal = Decimal("0")

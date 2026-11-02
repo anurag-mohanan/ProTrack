@@ -49,6 +49,7 @@ from app.models.models import (
     ProjectTemplateMilestone,
     TimesheetEntry,
 )
+from app.services.actual_hours import official_entry_clause
 
 _WEEKDAY_CODES = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 _FALLBACK_EFFORT_HOURS = Decimal("8")
@@ -405,10 +406,7 @@ def _milestone_actual_hours(db: Session, milestone_ids: list[UUID]) -> dict[UUID
         return {}
     rows = db.execute(
         select(TimesheetEntry.milestone_id, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(
-            TimesheetEntry.milestone_id.in_(milestone_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.milestone_id.in_(milestone_ids), official_entry_clause())
         .group_by(TimesheetEntry.milestone_id)
     ).all()
     return {milestone_id: Decimal(str(hours or 0)) for milestone_id, hours in rows}
@@ -445,8 +443,12 @@ def _project_mode(project: Project) -> TemplateSchedulingMode:
 
 
 def _items_for_project(db: Session, project: Project, *, forecast: bool) -> list[ScheduleItem]:
+    from app.services.milestone_lifecycle import active_milestone_clause
+
     milestones = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+        db.scalars(
+            select(Milestone).where(Milestone.project_id == project.id, active_milestone_clause())
+        ).all()
     )
     ids = [row.id for row in milestones]
     actuals = _milestone_actual_hours(db, ids) if forecast else {}

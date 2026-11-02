@@ -12,6 +12,7 @@ from app.core.non_productive_categories import leave_entry_clause
 from app.crud.foundation import holiday
 from app.models.enums import MilestoneStatus
 from app.models.models import Customer, Milestone, Project, Team, Timesheet, TimesheetEntry, User
+from app.models.workflow import LIFECYCLE_ACTIVE
 from app.schemas.calendar import CalendarEvent, ProjectTimelineBar
 
 
@@ -30,6 +31,7 @@ def get_engineering_calendar(
             Milestone.due_date.is_not(None),
             Milestone.due_date >= start_date,
             Milestone.due_date <= end_date,
+            Milestone.lifecycle_state == LIFECYCLE_ACTIVE,
             Project.is_deleted.is_(False),
         )
     ).all()

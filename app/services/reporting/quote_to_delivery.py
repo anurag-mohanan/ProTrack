@@ -170,8 +170,8 @@ DEFINITIONS = [
         key="actual_hours_total",
         label="Actual hours",
         definition=(
-            "Sum of non-deleted timesheet hours (any timesheet status) over projects whose "
-            "actual hours are known. Completed projects with no hours are 'missing', not zero."
+            "Sum of approved timesheet hours over projects whose actual hours are known. "
+            "Completed projects with no approved hours are 'missing', not zero."
         ),
     ),
     KpiDefinition(

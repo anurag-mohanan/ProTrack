@@ -57,6 +57,7 @@ from app.schemas.engineering_performance import (
     StagePerformanceRow,
 )
 from app.schemas.engineering_metrics import ProjectDelivery
+from app.services.actual_hours import official_entry_clause
 from app.services.delivery_variance_service import (
     BaselineHistory,
     baseline_histories,
@@ -346,7 +347,7 @@ def _effort_by_classification(db: Session, project_ids: list[UUID]) -> list[Effo
         select(TaskType.function_category, func.coalesce(func.sum(TimesheetEntry.hours), 0))
         .select_from(TimesheetEntry)
         .outerjoin(TaskType, TaskType.id == TimesheetEntry.task_type_id)
-        .where(TimesheetEntry.project_id.in_(project_ids), TimesheetEntry.is_deleted.is_(False))
+        .where(TimesheetEntry.project_id.in_(project_ids), official_entry_clause())
         .group_by(TaskType.function_category)
     ).all()
     hours = {category: Decimal(str(value or 0)) for category, value in rows}
@@ -377,7 +378,11 @@ def _milestones(db: Session, project_ids: list[UUID]) -> dict[UUID, list[Milesto
     result: dict[UUID, list[Milestone]] = defaultdict(list)
     if not project_ids:
         return result
-    for row in db.scalars(select(Milestone).where(Milestone.project_id.in_(project_ids))):
+    from app.services.milestone_lifecycle import active_milestone_clause
+
+    for row in db.scalars(
+        select(Milestone).where(Milestone.project_id.in_(project_ids), active_milestone_clause())
+    ):
         result[row.project_id].append(row)
     return result
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.enums import ContributionReason
 from app.models.models import Project, Timesheet, TimesheetEntry, User
 from app.schemas.timesheet import ContributorReasonHours, ProjectContributorSummary
+from app.services.actual_hours import official_entry_clause
 
 CONTRIBUTION_REASON_LABELS: dict[ContributionReason, str] = {
     ContributionReason.assisting_designer: "Assisting Designer",
@@ -67,10 +68,7 @@ def get_project_contributors(db: Session, project_id: UUID) -> list[ProjectContr
         )
         .join(Timesheet, TimesheetEntry.timesheet_id == Timesheet.id)
         .join(User, Timesheet.user_id == User.id)
-        .where(
-            TimesheetEntry.project_id == project_id,
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.project_id == project_id, official_entry_clause())
         .group_by(
             User.id,
             User.first_name,
@@ -170,10 +168,7 @@ def aggregate_contribution_hours_by_reason(
 ) -> dict[str, Decimal]:
     rows = db.execute(
         select(TimesheetEntry.contribution_reason, func.coalesce(func.sum(TimesheetEntry.hours), 0))
-        .where(
-            TimesheetEntry.project_id == project_id,
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.project_id == project_id, official_entry_clause())
         .group_by(TimesheetEntry.contribution_reason)
     ).all()
 

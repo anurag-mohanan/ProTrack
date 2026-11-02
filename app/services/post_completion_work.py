@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ProTrackValidationError
 from app.models.enums import ExecutionStatus, PostCompletionWorkType
 from app.models.models import Project, Stream, Team, TimesheetEntry
+from app.services.actual_hours import official_entry_clause
 
 COMMENT_REQUIRED_TYPES = frozenset(
     {
@@ -109,10 +110,7 @@ def hours_by_post_completion_type(
             TimesheetEntry.post_completion_type,
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
-        .where(
-            TimesheetEntry.project_id.in_(project_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.project_id.in_(project_ids), official_entry_clause())
         .group_by(TimesheetEntry.project_id, TimesheetEntry.post_completion_type)
     ).all()
     result: dict[UUID, dict[PostCompletionWorkType | None, Decimal]] = {
@@ -140,7 +138,7 @@ def completed_post_completion_metrics(
         )
         .join(Project, TimesheetEntry.project_id == Project.id)
         .where(
-            TimesheetEntry.is_deleted.is_(False),
+            official_entry_clause(),
             TimesheetEntry.post_completion_type.is_not(None),
             Project.execution_status == ExecutionStatus.completed,
             Project.is_deleted.is_(False),
@@ -174,7 +172,7 @@ def completed_post_completion_metrics(
         select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
         .join(Project, TimesheetEntry.project_id == Project.id)
         .where(
-            TimesheetEntry.is_deleted.is_(False),
+            official_entry_clause(),
             TimesheetEntry.post_completion_type.is_not(None),
             TimesheetEntry.entry_date >= month_start,
             TimesheetEntry.entry_date <= month_end,

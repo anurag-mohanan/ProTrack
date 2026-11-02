@@ -53,6 +53,24 @@ def _approver_ids_for_timesheet(db: Session, timesheet: Timesheet) -> set:
     return user_ids
 
 
+def _refresh_project_hours(db: Session, timesheet: Timesheet, old_status: TimesheetStatus) -> None:
+    """Official actual hours count approved sheets only, so entering or leaving approval refreshes the cache."""
+    if TimesheetStatus.approved not in (old_status, timesheet.status):
+        return
+    from app.services.project_calculation_service import recalculate_project
+
+    project_ids = set(
+        db.scalars(
+            select(TimesheetEntry.project_id).where(
+                TimesheetEntry.timesheet_id == timesheet.id,
+                TimesheetEntry.project_id.is_not(None),
+            )
+        )
+    )
+    for project_id in project_ids:
+        recalculate_project(db, project_id)
+
+
 def submit_timesheet(db: Session, *, timesheet: Timesheet, actor: User) -> Timesheet:
     _require_permission(
         can_submit_timesheet(db, actor, timesheet),
@@ -110,6 +128,7 @@ def approve_timesheet(
     db.add(timesheet)
     db.commit()
     db.refresh(timesheet)
+    _refresh_project_hours(db, timesheet, old_status)
 
     log_activity(
         db,
@@ -153,6 +172,7 @@ def reject_timesheet(
     db.add(timesheet)
     db.commit()
     db.refresh(timesheet)
+    _refresh_project_hours(db, timesheet, old_status)
 
     log_activity(
         db,
@@ -194,6 +214,7 @@ def return_timesheet_to_draft(
     db.add(timesheet)
     db.commit()
     db.refresh(timesheet)
+    _refresh_project_hours(db, timesheet, old_status)
 
     log_activity(
         db,

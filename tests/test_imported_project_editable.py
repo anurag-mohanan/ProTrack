@@ -148,6 +148,9 @@ def test_imported_project_full_edit_workflow(client, session, imported_project):
         headers=headers,
     )
     assert entry.status_code == 201, entry.text
+    for action, body in (("submit", None), ("approve", {})):
+        done = client.post(f"/api/v1/timesheets/{timesheet.json()['id']}/{action}", json=body, headers=headers)
+        assert done.status_code == 200, done.text
 
     reloaded = client.get(f"/api/v1/projects/{project_id}", headers=headers)
     assert reloaded.status_code == 200

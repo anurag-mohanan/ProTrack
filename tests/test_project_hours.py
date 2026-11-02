@@ -41,7 +41,40 @@ def test_actual_hours_recalculates_on_timesheet_entry_create(client, auth_header
     assert entry.status_code == 201
 
     after = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()
+    assert Decimal(str(after["actual_hours"])) == Decimal("0")  # draft hours are not actual hours
+
+    _approve(client, auth_headers, timesheet.json()["id"])
+    after = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()
     assert Decimal(str(after["actual_hours"])) == Decimal("8")
+
+
+def test_submitted_then_rejected_hours_never_become_actual_hours(client, auth_headers):
+    project_id = client.project_id
+    timesheet = client.post(
+        "/api/v1/timesheets",
+        json={"user_id": str(client.user_id), "week_start": "2026-06-16", "status": "draft"},
+        headers=auth_headers,
+    ).json()
+    client.post(
+        "/api/v1/timesheet-entries",
+        json={"timesheet_id": timesheet["id"], "work_category": "productive", "project_id": project_id,
+              "task_type_id": client.task_type_id, "entry_date": "2026-06-17", "hours": 5},
+        headers=auth_headers,
+    )
+    assert client.post(f"/api/v1/timesheets/{timesheet['id']}/submit", headers=auth_headers).status_code == 200
+    assert Decimal(str(client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()["actual_hours"])) == Decimal("0")
+
+    rejected = client.post(f"/api/v1/timesheets/{timesheet['id']}/reject", json={"comments": "Wrong project"},
+                           headers=auth_headers)
+    assert rejected.status_code == 200, rejected.text
+    assert Decimal(str(client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()["actual_hours"])) == Decimal("0")
+
+
+def _approve(client, auth_headers, timesheet_id) -> None:
+    submitted = client.post(f"/api/v1/timesheets/{timesheet_id}/submit", headers=auth_headers)
+    assert submitted.status_code == 200, submitted.text
+    approved = client.post(f"/api/v1/timesheets/{timesheet_id}/approve", json={}, headers=auth_headers)
+    assert approved.status_code == 200, approved.text
 
 
 def test_actual_hours_recalculates_on_entry_update_and_delete(client, auth_headers):
@@ -69,6 +102,9 @@ def test_actual_hours_recalculates_on_entry_update_and_delete(client, auth_heade
         },
         headers=auth_headers,
     ).json()
+    _approve(client, auth_headers, timesheet["id"])
+    project = client.get(f"/api/v1/projects/{project_id}", headers=auth_headers).json()
+    assert Decimal(str(project["actual_hours"])) == Decimal("4")
 
     updated = client.patch(
         f"/api/v1/timesheet-entries/{entry['id']}",

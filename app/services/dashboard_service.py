@@ -45,6 +45,8 @@ from app.models.models import (
     TimesheetImportHistory,
     User,
 )
+from app.services.actual_hours import official_entry_clause
+from app.services.milestone_lifecycle import active_milestone_clause
 from app.schemas.dashboard import (
     DashboardActivityItem,
     DashboardCustomerWorkloadRow,
@@ -292,7 +294,7 @@ def get_dashboard_kpis(
                 select(func.coalesce(func.sum(TimesheetEntry.hours), 0))
                 .select_from(TimesheetEntry)
                 .join(Project, Project.id == TimesheetEntry.project_id)
-                .where(TimesheetEntry.is_deleted.is_(False), *live)
+                .where(official_entry_clause(), *live)
             )
         )
     )
@@ -356,6 +358,7 @@ def _batch_current_milestones(db: Session, project_ids: list[UUID]) -> dict[UUID
         select(Milestone)
         .where(
             Milestone.project_id.in_(project_ids),
+            active_milestone_clause(),
             Milestone.status != MilestoneStatus.completed,
         )
         .order_by(Milestone.project_id, Milestone.sort_order)
@@ -571,6 +574,7 @@ def get_dashboard_my_tasks(db: Session, user: User) -> DashboardMyTasks:
             select(Milestone)
             .where(
                 Milestone.project_id.in_(user_project_ids),
+                active_milestone_clause(),
                 Milestone.status != MilestoneStatus.completed,
                 Milestone.due_date.is_not(None),
                 Milestone.due_date >= today,

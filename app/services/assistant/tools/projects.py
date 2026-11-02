@@ -31,7 +31,8 @@ MAX_SCAN = 400
 CLOSED_MILESTONE = {"completed", "cancelled", "not_applicable"}
 
 HOURS_NOTE = (
-    "Actual hours are all recorded timesheet hours (approved, submitted, draft and rejected are listed separately). "
+    "Actual hours are approved timesheet hours; submitted hours are provisional and, with draft and rejected hours, "
+    "are listed separately and not counted. "
     "Approved estimate is the current approved estimate; quoted hours are the original quote."
 )
 

@@ -66,8 +66,8 @@ Answers to the brief's readiness questions:
 
 * No allocation model and no planned leave: phased demand is an assumption (remaining hours spread evenly over the assignee's working days until the project's end date), stated on every output.
 * Quotes have no award status (Phase 3 assumption kept).
-* `build_receivables_aging` still fails for quotes linked to a project (B0.x); the predictive finance layer uses the lower-level ledger functions, as Phase 3 does.
-* The rule that draft and rejected hours count toward actuals is still an open business decision; the split is shown.
+* `build_receivables_aging` still fails for quotes linked to a project (B0.x); the predictive finance layer uses the lower-level ledger functions, as Phase 3 does. *Resolved after release: section 17.*
+* The rule that draft and rejected hours count toward actuals is still an open business decision; the split is shown. *Resolved after release: only approved hours count (section 17).*
 
 ## 2. Architecture
 
@@ -193,7 +193,7 @@ Accuracy should be reviewed once at least 10 forecasts of a type have been score
 * A different designer in a scenario changes only the capacity check; comparable history is not designer-specific.
 * Skill demand counts all work on a project that requires the skill; the share needing the skill is not recorded.
 * Portfolio patterns test several groups at once; roughly 1 in 20 tested differences can look significant by chance (stated on the page).
-* Finance timing depends on the Phase 3 items and inherits their assumptions (quotes have no award status). B0.x (`build_receivables_aging` with project-linked quotes) is still open and is avoided rather than fixed.
+* Finance timing depends on the Phase 3 items and inherits their assumptions (quotes have no award status). B0.x (`build_receivables_aging` with project-linked quotes) is fixed (section 17). Finance predictions still read the shared Phase 3 ledgers rather than the aging report, so their results are unchanged.
 * Predictions are produced on demand or by the job runner; there is no built-in schedule. Rows older than 8 days are flagged as possibly out of date and are not used for Control Tower findings.
 
 ## 10. Security
@@ -223,7 +223,7 @@ Accuracy should be reviewed once at least 10 forecasts of a type have been score
 ## 12. Test results
 
 * Phase 7 tests: 41 passed; with the Control Tower and Assistant suites, all pass.
-* Full backend suite: 1410 passed, 12 failed (the 12 known baseline failures, none new), 1 skipped.
+* Full backend suite: 1410 passed, 12 failed (the 12 known baseline failures, none new), 1 skipped. After the pre-implementation maintenance (section 17): 1426 passed, the same 12 failed, 1 skipped.
 * Frontend: type-check and production build pass; ESLint clean on new files.
 * Database copy: migration additive and idempotent; runs write only their own tables; the original database untouched.
 
@@ -278,12 +278,14 @@ New: `app/models/prediction.py`, `app/db/phase112_predictive_schema_sync.py`, `a
 
 Changed for Phase 7: `app/models/models.py` (registers the prediction models), `app/models/enums.py` (activity enum values), `app/models/control_tower.py`, `app/main.py` (phase112 startup step), `app/api/v1/api.py`, `app/api/v1/control_tower.py`, `app/schemas/control_tower.py`, `app/services/control_tower_service.py`, `app/services/job_queue.py`, `app/jobs/runner.py`, `app/services/assistant/registry.py`, `orchestrator.py`, `suggestions.py`, `tools/projects.py`, `tests/test_control_tower.py`, `frontend/src/App.tsx`, `frontend/src/utils/permissions.ts`, `frontend/src/components/layout/AppBreadcrumbs.tsx`, `frontend/src/api/controlTower.ts`, `frontend/src/types/ControlTower.ts`, `frontend/src/components/reports/ControlTowerPanel.tsx`.
 
+Pre-implementation maintenance (section 17) files are listed in section 17.6.
+
 ## 15. Outstanding work
 
 * Capture the data the models need: project start dates, approved estimates, project-linked timesheets, milestone plans and dependencies, project types, and Finance records. Predictions appear automatically once comparable history reaches the minimum.
 * Schedule `--predictions --control-tower` in the existing job scheduler (daily is sufficient).
-* Decide whether draft and rejected hours count toward actuals (open since Phase 1).
-* Fix B0.x (`receivables_service` reads `project.name`) so finance aging can be used directly; Phase 7 avoids it.
+* ~~Decide whether draft and rejected hours count toward actuals~~: decided and implemented (approved only; `docs/PROTRACK_TIMESHEET_HOUR_DEFINITION.md`, section 17).
+* ~~Fix B0.x (`receivables_service` reads `project.name`)~~: fixed (section 17).
 * Commit the outstanding Phase 5 and 6 files listed in section 1.1.
 * Browser check of `/predictive` was not performed (by instruction); verification relied on tests and the build.
 
@@ -294,3 +296,122 @@ Changed for Phase 7: `app/models/models.py` (registers the prediction models), `
 3. Stage-level forecasts and stage overrun findings (`stage_overrun` is still deferred in the Control Tower).
 4. Trial a second hours or delivery model in shadow (for example, adding recorded progress) and promote it only through the activation guard.
 5. Scenario comparison across several projects (portfolio what-if) once project-level forecasts exist.
+
+## 17. Pre-Implementation Maintenance Results
+
+This maintenance was requested as a precondition for Phase 7. Phase 7 had already been implemented, so this work was retrofitted onto it. Phase 7 predictions, Control Tower forecasts and the Assistant now read the shared hours definition below; no Phase 7 model, threshold or stored prediction was changed.
+
+### 17.1 Receivables `project.name` bug (B0.x)
+
+* **Root cause:** `Project` has no `name` column; its descriptive field is `part_description`. `receivables_service` (aging rows and the customer summary) and `customer_financial_service` (customer quote rows and `project_financial_summary`) read `project.name`, so any quote linked to a project raised `AttributeError`. This broke the receivables report, the customer and project financial summaries, and the Assistant receivables tool.
+* **Fix:** those four places read `project.part_description`. The response key stays `project_name`, so the frontend is unchanged. No field was added. No invoice, payment, billing or revenue calculation changed.
+* **Regression test:** `tests/test_receivables_project_description.py` (4 tests). Linked quotes show the part description. Linking a project leaves the totals and buckets unchanged (270.00 total, 70.00 in 31–60 days, 200.00 not yet due). The customer and project summaries keep invoiced 300 and paid 30. `GET /api/v1/finance/receivables` returns 200.
+* **Finance tests:** 178 passed, 4 failed. All 4 are baseline failures (quote PDF extraction ×2 and receivables due-date aging ×2, `PHASE0_QUOTE_TO_DELIVERY_AUDIT.md` §3.1) and are unrelated to this fix.
+* **Not changed:** `app/api/v1/it_provisioning.py` reads `getattr(p, "name", None)`. It cannot crash, but the project name is always blank. Recorded for a separate fix.
+
+### 17.2 Official actual hours
+
+Defined in `docs/PROTRACK_TIMESHEET_HOUR_DEFINITION.md` and implemented once in `app/services/actual_hours.py`:
+
+* **Official:** entries on approved timesheets, not deleted.
+* **Provisional:** entries on submitted timesheets. Reported separately, never added to actuals.
+* **Excluded:** draft and rejected timesheets, and entries with no timesheet.
+* **Billable:** a subset of official hours, never added to the total.
+* **No double counting:** the rule filters through a timesheet-ID subquery, so joins cannot duplicate an entry.
+
+Consumers changed to use it:
+
+* Project reporting (engineering metrics, stage buckets, contributors, milestone workspace, estimates, scheduling, dashboard total, engineering performance).
+* Quote-to-delivery (through the cached project hours and `post_completion_work`).
+* Control Tower (cached project hours).
+* Phase 3 forecasting (`post_completion_work`).
+* Phase 7 hours, resource and evaluation.
+* The Phase 6 Assistant (cached project hours and explanatory text).
+
+Approving a timesheet, rejecting it or returning it to draft now refreshes the cached project hours for the projects on that sheet. The approval workflow itself (statuses, permissions, notifications) is unchanged. No timesheet record or approval status was modified.
+
+* **Impact on the working database before the change:** 4 timesheets (1 approved, 3 draft) and 0 project-linked entries. 0 of 24 projects change and there are 0 duplicates.
+* **Phase 7 demand scoring:** a person-demand prediction is not scored while draft or submitted hours in its window are still unapproved, for up to 14 days after the window ends. After that it is scored on approved hours, with a note giving the excluded amount.
+* **Remaining discrepancies (not changed, need a business decision):** period and team reports (`data_service`, `team_reports`, `cross_team_hours`) and the customer timesheet pack (a billing document) still include draft and submitted hours. See section 6 of the definition document.
+
+Tests: `tests/test_timesheet_hour_definition.py` (11 tests) covers approved, draft, rejected, submitted, mixed and billable hours, duplicate prevention, the approval transition, and agreement between reporting, forecasting, the Control Tower and predictions. Existing hours tests were updated to approve timesheets before expecting actual hours.
+
+### 17.3 Ports 8000 and 5180
+
+Both `netstat -ano` and `Get-NetTCPConnection` showed nothing listening on either port. The servers used earlier for Phase 7 ran on a database copy and had already exited. Nothing was stopped or restarted. `scripts/start_backend.ps1` was not used because it kills processes by name pattern.
+
+### 17.4 Database and backups
+
+* **Active database:** `C:\Users\anumoh\Documents\Coding\ProTrack\protrack.db`. The `DATABASE_URL` default in `app/db/session.py` is `sqlite:///./protrack.db`, and there is no `.env` or environment override.
+  * The file is 6,479,872 bytes with 166 tables, 24 projects and 14 users, and passes `PRAGMA integrity_check`.
+  * No process holds it open; an exclusive-open test succeeded.
+  * Last write time is unchanged (2026-10-29 12:20:48).
+* **New backup:** `Backups\Before Maintenance\2026-11-02_1625.db`. Its sha256 equals the active database's and its integrity check passes.
+* **Existing backups:** 100 real-data backups, with the same project and user fingerprints as the active database. All pass the integrity check, and all were kept.
+* **Test artifacts:** 26 files were empty copies of a test database (0 projects, users, timesheets, entries and quotes). The test suite had written them into the real `Backups\` folder during pre-import backup tests, from 2026-10-29 13:23 onward.
+  * Before being moved, each one passed its integrity check, was not in use, and was newer than the active database.
+  * They were moved, not deleted, to `Backups\_Quarantine_TestArtifacts_2026-11-02\` with their subfolder structure kept. Nothing was overwritten.
+  * `MANIFEST.csv` in that folder records the original path, size, timestamp, sha256, row counts, reason and new path for each file. All 26 sha256 values were verified after the move.
+  * Total moved: 98.4 MB. Nothing was permanently deleted. Deletion needs explicit confirmation.
+
+### 17.5 Regression
+
+* **Finance:** 178 passed, 4 failed (baseline).
+* **Timesheet, projects, reporting, forecasting, Control Tower, predictions and Assistant (87 files):** all failures were either baseline or fixed and rerun clean.
+* **Full backend suite:** 1426 passed, 12 failed, 1 skipped (48 min 23 s). The 12 failures are exactly the baseline list. The 16 additional passes are the new tests.
+* **Frontend:** `npx tsc -b`, `npm run build` and ESLint pass on the changed files.
+* **Database copy:** migration and the prediction and Control Tower runs behave as in section 13.3.
+* **Blockers:** none.
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Receivables `project.name` bug | Fixed | `Project` has no `name`; four reads changed to `part_description`; `tests/test_receivables_project_description.py` (4 pass) |
+| Official actual-hours definition | Confirmed | `app/services/actual_hours.py`: approved = official, submitted = provisional, draft and rejected excluded, billable a subset |
+| Draft/rejected/pending treatment | Verified | `tests/test_timesheet_hour_definition.py` (11 pass) and updated hours tests; full suite has only the 12 baseline failures |
+| Port 8000 | Not applicable | No listener; nothing stopped or restarted |
+| Port 5180 | Not applicable | No listener; nothing stopped or restarted |
+| Active database identified | Yes | `C:\Users\anumoh\Documents\Coding\ProTrack\protrack.db` (`app/db/session.py` default, no override) |
+| Backup integrity verified | Yes | `PRAGMA integrity_check` ok on all 100 real-data backups and on the new `Backups\Before Maintenance\2026-11-02_1625.db` (sha256 equal to the active database) |
+| Redundant backup cleanup | Archived | 26 empty test-database copies moved to `Backups\_Quarantine_TestArtifacts_2026-11-02\` (`MANIFEST.csv`, sha256 verified); nothing deleted |
+
+### 17.6 Files
+
+* **New:**
+  * `app/services/actual_hours.py`
+  * `tests/test_receivables_project_description.py`
+  * `tests/test_timesheet_hour_definition.py`
+  * `docs/PROTRACK_TIMESHEET_HOUR_DEFINITION.md`
+* **Changed:**
+  * `app/services/finance/receivables_service.py`
+  * `app/services/finance/customer_financial_service.py`
+  * `app/services/post_completion_work.py`
+  * `app/services/engineering_metrics_service.py`
+  * `app/schemas/engineering_metrics.py`
+  * `app/services/project_contributor_service.py`
+  * `app/services/milestone_workspace_service.py`
+  * `app/services/project_estimate_service.py`
+  * `app/services/scheduling_service.py`
+  * `app/services/dashboard_service.py`
+  * `app/services/reporting/engineering_performance.py`
+  * `app/services/reporting/quote_to_delivery.py`
+  * `app/services/control_tower_service.py`
+  * `app/services/forecasting/effort.py`
+  * `app/services/predictive/hours.py`
+  * `app/services/predictive/resources.py`
+  * `app/services/predictive/evaluation.py`
+  * `app/services/assistant/tools/projects.py`
+  * `app/services/timesheet_workflow_service.py`
+  * `frontend/src/components/projects/workspace/ProjectEngineeringMetricsPanel.tsx`
+  * `frontend/src/types/projectPlanning.ts`
+  * `tests/test_engineering_metrics.py`
+  * `tests/test_stage_delivery_metrics.py`
+  * `tests/test_project_hours.py`
+  * `tests/test_timesheet_reset.py`
+  * `tests/test_imported_project_editable.py`
+
+### 17.7 Follow-ups
+
+* Make the pre-import backup folder configurable so that tests stop writing into the real `Backups\` folder. Otherwise new artifacts will keep appearing.
+* Decide whether period and team reports and the customer timesheet pack should use approved hours only. This is a Finance decision for the pack.
+* Fix the blank project name in `it_provisioning` (`getattr(p, "name", None)`).
+* Delete the quarantine folder only after explicit confirmation.

@@ -50,7 +50,10 @@ def test_reset_requires_delete_confirmation(client, auth_headers):
 def test_reset_deletes_timesheets_and_recalculates_projects(
     client, auth_headers, test_session_factory
 ):
-    _seed_timesheet_entry(client, auth_headers)
+    timesheet, _ = _seed_timesheet_entry(client, auth_headers)
+    for action, body in (("submit", None), ("approve", {})):
+        done = client.post(f"/api/v1/timesheets/{timesheet['id']}/{action}", json=body, headers=auth_headers)
+        assert done.status_code == 200, done.text
     project_before = client.get(
         f"/api/v1/projects/{client.project_id}",
         headers=auth_headers,

@@ -8,10 +8,11 @@ One place for:
 * the per-project metrics shown on the project workspace, with explicit
   data-quality indicators instead of misleading zeros.
 
-Actual hours follow the existing project rule (``calculate_hours``): every
-non-deleted timesheet entry booked to the project, any timesheet status, any
-date, including post-completion hours. The split by timesheet status is
-reported so unapproved or rejected hours stay visible.
+Actual hours follow the authoritative definition in ``app.services.actual_hours``
+(via ``calculate_hours``): non-deleted entries booked to the project on approved
+timesheets, any date, including post-completion hours. Submitted hours are
+reported separately as provisional; draft and rejected hours are reported but
+never counted. Billable hours are the billable subset of the official total.
 
 Sign convention: variance = actual − estimate (positive means over the
 estimate); remaining = estimate − actual (negative means overrun; never clamped).
@@ -58,6 +59,7 @@ from app.schemas.engineering_metrics import (
     StageHoursRow,
 )
 from app.schemas.engineering_performance import KpiDefinition
+from app.services.actual_hours import OFFICIAL_STATUSES, official_entry_clause
 from app.services.delivery_variance_service import (
     BaselineHistory,
     baseline_histories,
@@ -99,8 +101,9 @@ METRIC_DEFINITIONS = [
         key="actual_hours",
         label="Actual hours",
         definition=(
-            "All non-deleted timesheet hours booked to the project, any timesheet status and "
-            "date, including post-completion hours. Same rule as the project page and the "
+            "Timesheet hours booked to the project on approved timesheets, any date, including "
+            "post-completion hours. Submitted hours are shown separately as provisional; draft "
+            "and rejected hours are not actual hours. Same rule as the project page and the "
             "Engineering Performance report."
         ),
     ),
@@ -270,7 +273,7 @@ class StageHourBuckets:
 
 
 def stage_hour_buckets(db: Session, project_ids: list[UUID]) -> dict[UUID, StageHourBuckets]:
-    """Each non-deleted entry lands in exactly one bucket (entry → milestone is many-to-one)."""
+    """Each official entry lands in exactly one bucket (entry → milestone is many-to-one)."""
     result: dict[UUID, StageHourBuckets] = {pid: StageHourBuckets() for pid in project_ids}
     if not project_ids:
         return result
@@ -284,10 +287,7 @@ def stage_hour_buckets(db: Session, project_ids: list[UUID]) -> dict[UUID, Stage
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
         .outerjoin(Milestone, Milestone.id == TimesheetEntry.milestone_id)
-        .where(
-            TimesheetEntry.project_id.in_(project_ids),
-            TimesheetEntry.is_deleted.is_(False),
-        )
+        .where(TimesheetEntry.project_id.in_(project_ids), official_entry_clause())
         .group_by(TimesheetEntry.project_id, linked, Milestone.project_id, Milestone.project_stage)
     ).all()
     for project_id, is_linked, milestone_project_id, stage, hours in rows:
@@ -477,6 +477,7 @@ class MetricInputs:
     hours: ProjectHours | None = None
     entry_count: int = 0
     by_status: dict[TimesheetStatus | None, Decimal] = field(default_factory=dict)
+    billable_hours: Decimal = ZERO
     buckets: StageHourBuckets = field(default_factory=StageHourBuckets)
     history: BaselineHistory = field(default_factory=BaselineHistory)
     quotes: list[Quote] = field(default_factory=list)
@@ -493,7 +494,11 @@ def load_metric_inputs(db: Session, projects: list[Project]) -> dict[UUID, Metri
         select(ProjectStageEstimate).where(ProjectStageEstimate.project_id.in_(ids))
     ):
         result[row.project_id].estimate_rows.append(row)
-    for row in db.scalars(select(Milestone).where(Milestone.project_id.in_(ids))):
+    from app.services.milestone_lifecycle import active_milestone_clause
+
+    for row in db.scalars(
+        select(Milestone).where(Milestone.project_id.in_(ids), active_milestone_clause())
+    ):
         result[row.project_id].milestone_rows.append(row)
     for project_id, count, last in db.execute(
         select(
@@ -508,20 +513,25 @@ def load_metric_inputs(db: Session, projects: list[Project]) -> dict[UUID, Metri
         result[project_id].last_revised_at = last
     for project_id, hours in batch_calculate_hours(db, projects).items():
         result[project_id].hours = hours
-    for project_id, status, count, hours in db.execute(
+    for project_id, status, billable, count, hours in db.execute(
         select(
             TimesheetEntry.project_id,
             Timesheet.status,
+            TimesheetEntry.is_billable,
             func.count(TimesheetEntry.id),
             func.coalesce(func.sum(TimesheetEntry.hours), 0),
         )
         .select_from(TimesheetEntry)
         .outerjoin(Timesheet, Timesheet.id == TimesheetEntry.timesheet_id)
         .where(TimesheetEntry.project_id.in_(ids), TimesheetEntry.is_deleted.is_(False))
-        .group_by(TimesheetEntry.project_id, Timesheet.status)
+        .group_by(TimesheetEntry.project_id, Timesheet.status, TimesheetEntry.is_billable)
     ):
-        result[project_id].entry_count += int(count or 0)
-        result[project_id].by_status[status] = _dec(hours)
+        inputs = result[project_id]
+        inputs.by_status[status] = inputs.by_status.get(status, ZERO) + _dec(hours)
+        if status in OFFICIAL_STATUSES:
+            inputs.entry_count += int(count or 0)
+            if billable:
+                inputs.billable_hours += _dec(hours)
     for project_id, buckets in stage_hour_buckets(db, ids).items():
         result[project_id].buckets = buckets
     for project_id, history in baseline_histories(db, ids).items():
@@ -776,6 +786,7 @@ def compute_project_metrics(
     actual = ActualHoursMetrics(
         status=actual_status,  # type: ignore[arg-type]
         total_hours=actual_total,
+        billable_hours=None if actual_status == "missing" else round_hours(inputs.billable_hours),
         entry_count=entry_count,
         before_completion_hours=round_hours(hours.original),
         post_completion_hours=round_hours(hours.post_completion_total),
@@ -787,8 +798,8 @@ def compute_project_metrics(
     missing_reason = None
     if actual_status == "missing":
         missing_reason = (
-            "No timesheet hours are recorded although work has been completed; actual hours "
-            "are missing rather than zero."
+            "No approved timesheet hours are recorded although work has been completed; actual "
+            "hours are missing rather than zero."
         )
         issues.append(
             DataQualityIssue(code="actual_hours_missing", severity="warning", message=missing_reason)
@@ -798,27 +809,30 @@ def compute_project_metrics(
             DataQualityIssue(
                 code="no_hours_recorded",
                 severity="info",
-                message="No timesheet hours have been booked to this project yet.",
+                message="No approved timesheet hours have been booked to this project yet.",
             )
         )
-    if actual.rejected_hours > 0:
+    if actual.submitted_hours > 0:
         issues.append(
             DataQualityIssue(
-                code="includes_rejected_hours",
-                severity="warning",
+                code="provisional_hours_pending",
+                severity="info",
                 message=(
-                    f"{actual.rejected_hours} h are on rejected timesheets. They still count "
-                    "toward actual hours under the current project rule."
+                    f"{actual.submitted_hours} h are on submitted timesheets awaiting approval. They are "
+                    "provisional and not included in actual hours."
                 ),
             )
         )
-    pending = actual.draft_hours + actual.submitted_hours
-    if pending > 0:
+    excluded = actual.draft_hours + actual.rejected_hours
+    if excluded > 0:
         issues.append(
             DataQualityIssue(
-                code="includes_unapproved_hours",
+                code="unapproved_hours_excluded",
                 severity="info",
-                message=f"{pending} h are on draft or submitted timesheets that are not yet approved.",
+                message=(
+                    f"{actual.draft_hours} h on draft and {actual.rejected_hours} h on rejected timesheets "
+                    "are not included in actual hours."
+                ),
             )
         )
     if unknown_status > 0:
@@ -826,7 +840,10 @@ def compute_project_metrics(
             DataQualityIssue(
                 code="entries_without_timesheet",
                 severity="warning",
-                message=f"{round_hours(unknown_status)} h belong to entries whose timesheet record is missing.",
+                message=(
+                    f"{round_hours(unknown_status)} h belong to entries whose timesheet record is missing; "
+                    "they are not included in actual hours."
+                ),
             )
         )
 

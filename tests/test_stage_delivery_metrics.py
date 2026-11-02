@@ -84,14 +84,14 @@ def test_stage_rows_and_unattributed_hours_reconcile_to_total(client, session):
 
     body = _get(client, project_id)
     total = _d(body["actual"]["total_hours"])
-    assert total == Decimal("44")  # deleted 9 h excluded; rejected 12 h kept (project rule)
+    assert total == Decimal("32")  # approved only: deleted 9 h and rejected 12 h excluded
     stage = body["stage_attribution"]
     rows = _rows(body)
     assert list(rows) == ["preliminary", "intermediate", "final"]  # no Feasibility: not in plan
     assert _d(rows["preliminary"]["actual_hours"]) == Decimal("24")  # two milestones, no double count
-    assert _d(rows["intermediate"]["actual_hours"]) == Decimal("12")
+    assert _d(rows["intermediate"]["actual_hours"]) == Decimal("0")
     assert _d(rows["final"]["actual_hours"]) == Decimal("0")
-    assert _d(rows["preliminary"]["percent_of_project_actual"]) == Decimal("54.55")
+    assert _d(rows["preliminary"]["percent_of_project_actual"]) == Decimal("75.00")
     assert stage["status"] == "partial"
     assert _d(stage["no_stage_hours"]) == Decimal("5")
     assert _d(stage["no_milestone_hours"]) == Decimal("3")

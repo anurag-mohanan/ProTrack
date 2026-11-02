@@ -276,7 +276,7 @@ def aggregate_customer_financial_summary(
             {
                 "quote_id": str(s["quote_id"]),
                 "project_id": str(s["project_id"]) if s.get("project_id") else None,
-                "project_name": project.name if project else None,
+                "project_name": project.part_description if project else None,
                 "tool_number": s.get("tool_number"),
                 "external_quote_number": s.get("external_quote_number"),
                 "awarded": _d(s.get("awarded_amount")),
@@ -411,7 +411,7 @@ def project_financial_summary(
     closed = bool(snapshots) and all(s.get("is_financially_closed") for s in snapshots)
     return {
         "project_id": str(project_id),
-        "project_name": project.name if project else None,
+        "project_name": project.part_description if project else None,
         "customer_id": str(project.customer_id) if project else None,
         "is_financially_closed": closed,
         "finance_lifecycle": "closed" if closed else "active",

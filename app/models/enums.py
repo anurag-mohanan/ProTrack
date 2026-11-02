@@ -323,6 +323,11 @@ class ActivityAction(enum.Enum):
     milestone_lifecycle_changed = "milestone_lifecycle_changed"
     automation_rule_changed = "automation_rule_changed"
     ai_recommendation_decided = "ai_recommendation_decided"
+    prediction_setting_changed = "prediction_setting_changed"
+    prediction_model_activated = "prediction_model_activated"
+    prediction_scenario_saved = "prediction_scenario_saved"
+    prediction_scenario_deleted = "prediction_scenario_deleted"
+    risk_finding_triaged = "risk_finding_triaged"
 
 
 class NotificationType(enum.Enum):
@@ -404,6 +409,10 @@ class EntityType(enum.Enum):
     it_reservation = "it_reservation"
     onboarding_template = "onboarding_template"
     ai_recommendation = "ai_recommendation"
+    prediction_setting = "prediction_setting"
+    prediction_model = "prediction_model"
+    prediction_scenario = "prediction_scenario"
+    risk_finding = "risk_finding"
 
 
 class CostNature(enum.Enum):

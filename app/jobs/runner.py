@@ -3,7 +3,9 @@
 Usage:
   python -m app.jobs.runner --once
   python -m app.jobs.runner --loop --sleep 5 --limit 20
+  python -m app.jobs.runner --predictions     # queue one prediction run, then --once
   python -m app.jobs.runner --control-tower   # queue one Control Tower evaluation, then --once
+  python -m app.jobs.runner --predictions --control-tower   # predictions first, so forecast findings are fresh
   python -m app.jobs.runner --automation      # queue one automation sweep, then --once
 """
 
@@ -27,6 +29,11 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=20, help="Max jobs per cycle")
     parser.add_argument("--sleep", type=float, default=5.0, help="Seconds between loop cycles")
     parser.add_argument(
+        "--predictions",
+        action="store_true",
+        help="Queue one prediction run before processing (daily scheduled task; runs before --control-tower)",
+    )
+    parser.add_argument(
         "--control-tower",
         action="store_true",
         help="Queue one Control Tower evaluation before processing (for a daily scheduled task)",
@@ -42,6 +49,7 @@ def main() -> None:
         args.once = True
 
     for flag, job_type in (
+        (args.predictions, job_queue.JOB_PREDICTION_RUN),
         (args.control_tower, job_queue.JOB_CONTROL_TOWER_EVALUATION),
         (args.automation, job_queue.JOB_AUTOMATION_SWEEP),
     ):

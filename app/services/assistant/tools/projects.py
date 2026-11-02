@@ -203,6 +203,8 @@ def _finding_dict(f) -> dict[str, Any]:
         "milestone": f.milestone.name if f.milestone else None,
         "owner": f.owner.name, "first_detected": f.first_detected_at.date() if f.first_detected_at else None,
         "evaluation_date": f.evaluation_date,
+        "source": "forecast (not a certainty)" if f.source == "predictive" else "operational",
+        "triage": f.triage_status,
     }
 
 
@@ -367,15 +369,16 @@ SPECS = [
         module="projects",
         description=(
             "Open Control Tower findings (the official risk evaluation) with evidence and recommended action. "
-            "Use to explain why a project is at risk. Never invent risks that are not listed."
+            "Use to explain why a project is at risk. Never invent risks that are not listed. view=predictive lists "
+            "forecast findings, which must be described as forecasts, not certainties."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "project": _PROJECT_REF,
-                "view": {"type": "string", "enum": ["risks", "data_quality"]},
+                "view": {"type": "string", "enum": ["risks", "predictive", "data_quality"]},
                 "severity": {"type": "string", "enum": ["critical", "high", "medium", "info"]},
-                "category": {"type": "string", "enum": ["schedule", "effort", "delivery", "capability"]},
+                "category": {"type": "string", "enum": ["schedule", "effort", "delivery", "capability", "resource"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 25},
             },
             "additionalProperties": False,

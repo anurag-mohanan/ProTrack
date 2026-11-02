@@ -295,6 +295,9 @@ from app.db.phase110_workflow_reconciliation_schema_sync import (
 from app.db.phase111_ai_assistant_schema_sync import (
     ensure_phase111_ai_assistant_foundation,
 )
+from app.db.phase112_predictive_schema_sync import (
+    ensure_phase112_predictive_foundation,
+)
 from app.db.phase106_shift_aware_allocation_schema_sync import (
     ensure_phase106_shift_aware_allocation_foundation,
 )
@@ -392,6 +395,8 @@ async def lifespan(app: FastAPI):
             ensure_phase110_workflow_reconciliation_foundation,
         ),
         ("phase111_ai_assistant", ensure_phase111_ai_assistant_foundation),
+        # Finding triage columns are read by every step that loads ProjectRiskFinding.
+        ("phase112_predictive", ensure_phase112_predictive_foundation),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),
         ("timesheet_approval_comments", ensure_timesheet_approval_comments),

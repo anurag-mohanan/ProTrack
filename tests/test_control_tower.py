@@ -408,9 +408,13 @@ def test_api_views_filters_pagination_and_summary(client, session):
     summary = risks["summary"]
     assert summary["open_risks"] >= 3 and summary["projects_with_risks"] >= 1
     assert {row["severity"] for row in summary["by_severity"]} == {"critical", "high", "medium"}
-    assert {row["category"] for row in summary["by_category"]} == {"schedule", "effort", "delivery", "data_quality", "capability"}
-    assert {r["rule_id"] for r in risks["deferred_rules"]} == {
-        "estimate_overrun_forecast", "delivery_forecast_risk", "stage_overrun", "resource_bottleneck",
+    assert {row["category"] for row in summary["by_category"]} == {
+        "schedule", "effort", "delivery", "data_quality", "capability", "resource",
+    }
+    assert summary["open_predictive"] == 0 and summary["dismissed"] == 0
+    assert {r["rule_id"] for r in risks["deferred_rules"]} == {"stage_overrun"}
+    assert {r["rule_id"] for r in risks["rules"] if r["kind"] == "predictive"} == {
+        "estimate_overrun_forecast", "delivery_forecast_risk", "milestone_delay_forecast", "resource_bottleneck",
     }
     assert _get(client, view="resolved", status="active", expect=422)
     assert _get(client, owner_id="not-a-uuid", expect=422)

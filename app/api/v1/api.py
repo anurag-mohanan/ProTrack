@@ -33,6 +33,7 @@ from app.api.v1 import (
     onboarding,
     exit_process,
     org_departments,
+    predictions,
     preferences,
     project_planning,
     project_templates,
@@ -175,6 +176,7 @@ api_router.include_router(control_tower.router)
 api_router.include_router(automation.router)
 api_router.include_router(assistant.router)
 api_router.include_router(forecasting.router)
+api_router.include_router(predictions.router)
 api_router.include_router(skills.router)
 api_router.include_router(finance.router)
 api_router.include_router(hr.router)

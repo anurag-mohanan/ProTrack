@@ -1,8 +1,10 @@
 import type {
   ControlTowerParams,
   ControlTowerResponse,
+  CtConvertResult,
   CtEvaluationRun,
   CtFindingDetail,
+  CtTriageAction,
 } from '../types/ControlTower';
 import { apiClient, buildQuery } from './client';
 
@@ -23,6 +25,25 @@ export async function evaluateControlTower(): Promise<CtEvaluationRun> {
 
 export async function acknowledgeControlTowerFinding(findingId: string, note: string): Promise<CtFindingDetail> {
   const { data } = await apiClient.post<CtFindingDetail>(`/control-tower/findings/${findingId}/acknowledge`, {
+    note: note.trim() || null,
+  });
+  return data;
+}
+
+export async function triageControlTowerFinding(
+  findingId: string,
+  action: CtTriageAction,
+  note: string,
+): Promise<CtFindingDetail> {
+  const { data } = await apiClient.post<CtFindingDetail>(`/control-tower/findings/${findingId}/triage`, {
+    action,
+    note: note.trim() || null,
+  });
+  return data;
+}
+
+export async function convertControlTowerFinding(findingId: string, note: string): Promise<CtConvertResult> {
+  const { data } = await apiClient.post<CtConvertResult>(`/control-tower/findings/${findingId}/convert`, {
     note: note.trim() || null,
   });
   return data;

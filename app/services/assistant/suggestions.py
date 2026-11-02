@@ -20,7 +20,7 @@ class Suggestion:
     text: str
     tool: str
     args: dict = field(default_factory=dict)
-    needs: str = "projects"  # projects | quotes | skills
+    needs: str = "projects"  # projects | quotes | skills | predictions
 
 
 SUGGESTIONS: tuple[Suggestion, ...] = (
@@ -46,6 +46,16 @@ SUGGESTIONS: tuple[Suggestion, ...] = (
     Suggestion("control-tower", "Management", "Summarise the Control Tower findings.", "get_control_tower_summary", {}),
     Suggestion("remaining-effort", "Management", "Which open projects have the most remaining effort?",
                "get_effort_forecast", {}),
+    Suggestion("likely-late", "Predictions", "Which projects are most likely to miss their delivery dates?",
+               "list_project_predictions", {"type": "delivery"}, needs="predictions"),
+    Suggestion("likely-overrun", "Predictions", "Which projects are likely to exceed their approved hours?",
+               "list_project_predictions", {"type": "final_hours"}, needs="predictions"),
+    Suggestion("bottlenecks", "Predictions", "What are our biggest resource bottlenecks for the next two months?",
+               "get_resource_demand_forecast", {"weeks": 8}, needs="predictions"),
+    Suggestion("prediction-accuracy", "Predictions", "How accurate have our project completion predictions been?",
+               "get_prediction_accuracy", {"type": "delivery"}, needs="predictions"),
+    Suggestion("payment-delays", "Predictions", "Which customers have the highest historical payment delays?",
+               "get_historical_patterns", {"kind": "payment"}, needs="quotes"),
 )
 
 
@@ -55,6 +65,11 @@ def _has_data(ctx: AssistantContext, needs: str, cache: dict[str, bool]) -> bool
             cache[needs] = bool(ctx.db.scalar(select(exists().where(Quote.is_active.is_(True)))))
         elif needs == "skills":
             cache[needs] = bool(ctx.db.scalar(select(exists().where(Skill.is_active.is_(True)))))
+        elif needs == "predictions":
+            from app.models.prediction import PREDICTED, Prediction
+
+            cache[needs] = bool(ctx.db.scalar(select(exists().where(
+                Prediction.is_latest.is_(True), Prediction.is_shadow.is_(False), Prediction.status == PREDICTED))))
         else:
             cache[needs] = ctx.db.scalars(visible_projects_stmt(ctx).limit(1)).first() is not None
     return cache[needs]

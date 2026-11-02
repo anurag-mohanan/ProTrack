@@ -2465,6 +2465,13 @@ from app.models.assistant import (  # noqa: E402, F401
     AIRecommendation,
     AIToolExecution,
 )
+from app.models.prediction import (  # noqa: E402, F401
+    Prediction,
+    PredictionModelVersion,
+    PredictionRun,
+    PredictionScenario,
+    PredictionSetting,
+)
 from app.models.commercial import (  # noqa: E402, F401
     FeatureFlag,
     Tenant,

@@ -1,7 +1,11 @@
 export type CtSeverity = 'critical' | 'high' | 'medium' | 'info';
-export type CtCategory = 'schedule' | 'effort' | 'delivery' | 'data_quality' | 'capability';
+export type CtCategory = 'schedule' | 'effort' | 'delivery' | 'data_quality' | 'capability' | 'resource';
 export type CtFindingStatus = 'active' | 'not_assessable' | 'resolved';
-export type CtView = 'risks' | 'data_quality' | 'resolved';
+export type CtView = 'risks' | 'predictive' | 'data_quality' | 'resolved';
+export type CtSource = 'operational' | 'predictive';
+export type CtTriageStatus = 'investigating' | 'dismissed';
+export type CtTriageFilter = 'untriaged' | CtTriageStatus;
+export type CtTriageAction = 'investigate' | 'dismiss' | 'reopen';
 export type CtState = 'never_evaluated' | 'running' | 'last_run_failed' | 'stale' | 'ok';
 
 export interface CtEvidenceLine {
@@ -48,6 +52,20 @@ export interface CtFinding {
   acknowledged_by_name: string | null;
   acknowledgement_note: string | null;
   is_recurrence: boolean;
+  source: CtSource;
+  source_label: string;
+  prediction_id: string | null;
+  triage_status: CtTriageStatus | null;
+  triage_note: string | null;
+  triaged_at: string | null;
+  triaged_by_name: string | null;
+  recommendation_id: string | null;
+}
+
+export interface CtConvertResult {
+  recommendation_id: string;
+  status: string;
+  title: string;
 }
 
 export interface CtFindingEvent {
@@ -80,6 +98,8 @@ export interface CtEvaluationRun {
 export interface CtSummary {
   open_risks: number;
   open_data_quality: number;
+  open_predictive: number;
+  dismissed: number;
   not_assessable: number;
   projects_with_risks: number;
   projects_with_data_quality: number;
@@ -92,7 +112,7 @@ export interface CtRule {
   rule_id: string;
   title: string;
   category: CtCategory;
-  kind: 'risk' | 'data_quality';
+  kind: 'risk' | 'data_quality' | 'predictive';
   severity_rule: string;
   condition: string;
   recommended_action: string;
@@ -117,6 +137,7 @@ export interface ControlTowerParams {
   project_id?: string;
   owner_id?: string;
   search?: string;
+  triage?: CtTriageFilter;
   page?: number;
   page_size?: number;
 }

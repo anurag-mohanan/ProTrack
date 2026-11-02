@@ -87,6 +87,7 @@ const HrProcessAuditPage = lazy(() =>
 const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage'));
 const EngineeringSkillsPage = lazy(() => import('./pages/EngineeringSkillsPage'));
 const AssistantPage = lazy(() => import('./pages/AssistantPage'));
+const PredictivePage = lazy(() => import('./pages/PredictivePage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -364,6 +365,14 @@ export default function App() {
                       <Route path="/reports" element={<ReportsPage />} />
                       <Route path="/knowledge" element={<KnowledgeBasePage />} />
                       <Route path="/executive-wall" element={<ExecutiveWallPage />} />
+                      <Route
+                        path="/predictive"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading forecasts…" />}>
+                            <PredictivePage />
+                          </Suspense>
+                        }
+                      />
                     </Route>
                     <Route element={<ModuleRoute module={MODULE_CALENDAR} />}>
                       <Route

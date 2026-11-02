@@ -128,6 +128,21 @@ class ProjectRiskFinding(Base, TimestampMixin, TenantMixin):
     last_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("project_risk_evaluation_runs.id", ondelete="SET NULL")
     )
+    # operational (a condition that is true now) | predictive (an expected future condition)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="operational", server_default="operational")
+    prediction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("predictions.id", ondelete="SET NULL"), nullable=True
+    )
+    # investigating | dismissed; a dismissed finding stays hidden until its condition clears.
+    triage_status: Mapped[Optional[str]] = mapped_column(String(20))
+    triage_note: Mapped[Optional[str]] = mapped_column(String(500))
+    triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    triaged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    recommendation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("ai_recommendations.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class ProjectRiskFindingEvent(Base, TimestampMixin, TenantMixin):

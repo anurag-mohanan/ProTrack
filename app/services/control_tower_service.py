@@ -5,6 +5,8 @@ Every rule is evaluated from the shared engineering metrics
 (``delivery_variance_service``); this module adds no metric of its own. Rules
 apply only where the project's working model allows the matching
 ``ProjectRiskType`` (the same filter as the project command center).
+Predictive rules read the stored predictions (``app.services.predictive``) and
+are kept separate from operational findings by ``source``.
 
 Evaluation writes only Control Tower tables. It never changes estimates,
 dates, assignments, statuses or Finance records.
@@ -19,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.control_tower import (
@@ -66,7 +68,7 @@ from app.services.working_model.resolver import resolve_working_models_for_proje
 
 logger = logging.getLogger("protrack.control_tower")
 
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 RUN_ABANDON_AFTER = timedelta(minutes=15)
 
 SEVERITIES = ("critical", "high", "medium", "info")
@@ -82,7 +84,11 @@ CATEGORY_LABELS = {
     "delivery": "Project delivery",
     "data_quality": "Data quality",
     "capability": "Skills capability",
+    "resource": "Resource capacity",
 }
+SOURCE_LABELS = {"operational": "Operational", "predictive": "Predictive"}
+TRIAGE_INVESTIGATING = "investigating"
+TRIAGE_DISMISSED = "dismissed"
 OWNER_BASIS_LABELS = {
     "milestone_assignee": "Milestone assignee",
     "design_leader": "Design leader",
@@ -284,41 +290,78 @@ RULES: dict[str, RuleDefinition] = {
             ),
             recommended_action="Consider knowledge transfer or a development plan for a second holder.",
         ),
+        RuleDefinition(
+            rule_id="delivery_forecast_risk",
+            title="Forecast to finish after its target",
+            category="delivery",
+            kind="predictive",
+            severity_rule="High when forecast 14 or more days late, otherwise Medium.",
+            condition=(
+                "The latest completion-date prediction (active model, made in the last 8 days) is after the "
+                "project's current target. Not raised while the project is already past its target: the "
+                "operational finding covers it."
+            ),
+            recommended_action=(
+                "Review the remaining work and capacity with the design leader. If a new date is needed, agree "
+                "it through the baseline approval workflow; dates are never changed automatically."
+            ),
+            risk_type=ProjectRiskType.overdue,
+        ),
+        RuleDefinition(
+            rule_id="estimate_overrun_forecast",
+            title="Forecast to exceed the approved estimate",
+            category="effort",
+            kind="predictive",
+            severity_rule="High when forecast 25% or more over, Medium from 10%; below 10% no finding.",
+            condition=(
+                "The latest final-hours prediction (active model, made in the last 8 days) exceeds the current "
+                "approved estimate by at least 10%. Not raised once actual hours already exceed the estimate."
+            ),
+            recommended_action=(
+                "Check scope and progress with the designer. If the scope has grown, submit an estimate revision "
+                "for approval; estimates are never raised automatically."
+            ),
+            risk_type=ProjectRiskType.hours_over_quote,
+        ),
+        RuleDefinition(
+            rule_id="milestone_delay_forecast",
+            title="Milestone forecast to finish late",
+            category="schedule",
+            kind="predictive",
+            severity_rule="High when forecast 14 or more days late, otherwise Medium.",
+            condition=(
+                "The latest milestone finish prediction (active model, made in the last 8 days) is after the "
+                "milestone's current target. Only recorded dependencies are considered. Not raised once the "
+                "milestone is overdue."
+            ),
+            recommended_action="Confirm the plan with the milestone owner and resolve any blocking predecessor.",
+            risk_type=ProjectRiskType.milestone_delay,
+        ),
+        RuleDefinition(
+            rule_id="resource_bottleneck",
+            title="Designer forecast over capacity",
+            category="resource",
+            kind="predictive",
+            severity_rule="High at 150% forecast utilisation or more, otherwise Medium.",
+            condition=(
+                "The project's designer has more forecast project work than capacity over the next 4 weeks, with "
+                "every contributing project estimated. Raised once per designer, on their project that ends first."
+            ),
+            recommended_action=(
+                "Review the designer's workload with the design leader and decide on priorities or support. "
+                "Designers are never reassigned automatically."
+            ),
+        ),
     )
 }
 
 DEFERRED_RULES: tuple[DeferredRuleRead, ...] = (
-    DeferredRuleRead(
-        rule_id="estimate_overrun_forecast",
-        title="Forecast estimate overrun",
-        reason=(
-            "There is no reliable remaining-effort forecast. Remaining hours are estimate minus actual, and the "
-            "stage-plan forecast is provisional, so a forecast overrun would be invented."
-        ),
-    ),
-    DeferredRuleRead(
-        rule_id="delivery_forecast_risk",
-        title="Forecast delivery risk",
-        reason=(
-            "The stage-plan completion forecast assumes one person per stage and ignores capacity, so it is "
-            "not a validated completion forecast."
-        ),
-    ),
     DeferredRuleRead(
         rule_id="stage_overrun",
         title="Stage-specific overrun",
         reason=(
             "Stage actual hours depend on entries linked to staged milestones; the weekly timesheet grid and "
             "imports do not set that link, so stage actuals are incomplete for most projects."
-        ),
-    ),
-    DeferredRuleRead(
-        rule_id="resource_bottleneck",
-        title="Resource bottleneck",
-        reason=(
-            "There is no leave model, no allocation model and no validated demand. Workload uses heuristic "
-            "16 h / 40 h floors and fixed role shares, and verified skills only cover projects with recorded "
-            "requirements, so capacity cannot be judged reliably."
         ),
     ),
 )
@@ -378,6 +421,8 @@ class Detection:
     # Set when the rule's inputs are missing: an open finding is kept as
     # not_assessable instead of being resolved; no new finding is opened.
     not_assessable_reason: str | None = None
+    source: str = "operational"
+    prediction_id: UUID | None = None
 
     @property
     def key(self) -> str:
@@ -827,6 +872,9 @@ def _apply_detection(finding: ProjectRiskFinding, detection: Detection) -> bool:
         if getattr(finding, name) != value:
             setattr(finding, name, value)
             changed = True
+    finding.source = detection.source
+    # A newer prediction behind the same condition is not a change a reader needs to see.
+    finding.prediction_id = detection.prediction_id
     return changed
 
 
@@ -853,6 +901,9 @@ def detect_all(db: Session, today: date) -> tuple[list[Project], list[Detection]
         metrics = compute_project_metrics(project, project_inputs, finance_details_visible=False, today=today)
         detections.extend(evaluate_project(project, metrics, project_inputs.milestone_rows, allowed[project.id]))
     detections.extend(capability_detections(db, projects, today))
+    from app.services.predictive.alerts import predictive_detections
+
+    detections.extend(predictive_detections(db, projects, today, list(detections), allowed))
     return projects, detections
 
 
@@ -1124,6 +1175,101 @@ def acknowledge_finding(
     return finding
 
 
+TRIAGE_ACTIONS = {"investigate": TRIAGE_INVESTIGATING, "dismiss": TRIAGE_DISMISSED, "reopen": None}
+_PRIORITY_BY_SEVERITY = {"critical": "high", "high": "high", "medium": "medium", "info": "low"}
+
+
+class FindingActionError(ValueError):
+    pass
+
+
+def _log_triage(db: Session, finding: ProjectRiskFinding, user: User, previous: str | None, action: str,
+                note: str | None) -> None:
+    from app.models.enums import ActivityAction, EntityType
+    from app.services.activity_service import log_activity
+
+    log_activity(
+        db, user=user, entity_type=EntityType.risk_finding, entity_id=finding.id,
+        action=ActivityAction.risk_finding_triaged, old_value=previous,
+        new_value=json.dumps({"action": action, "rule": finding.rule_id, "source": finding.source,
+                              "triage_status": finding.triage_status, "note": note}, default=str),
+        outcome="success", module="control_tower", commit=False,
+    )
+
+
+def triage_finding(db: Session, finding: ProjectRiskFinding, *, user: User, action: str,
+                   note: str | None) -> ProjectRiskFinding:
+    """Mark an open finding as under investigation or dismissed, or clear that mark.
+
+    Triage never resolves a finding: the next evaluation still decides whether the condition holds.
+    """
+    if action not in TRIAGE_ACTIONS:
+        raise FindingActionError(f"Unknown action {action!r}.")
+    if finding.status == FINDING_RESOLVED:
+        raise FindingActionError("Resolved findings cannot be triaged.")
+    note = (note or "").strip() or None
+    if action == "dismiss" and not note:
+        raise FindingActionError("Give a reason for dismissing the finding.")
+    previous = finding.triage_status
+    now = _now()
+    finding.triage_status = TRIAGE_ACTIONS[action]
+    finding.triage_note = note
+    finding.triaged_at = now
+    finding.triaged_by_id = user.id
+    event = {"investigate": "investigating", "dismiss": "dismissed", "reopen": "triage_cleared"}[action]
+    _record_event(db, finding, event, now, user_id=user.id, detail=note)
+    _log_triage(db, finding, user, previous, action, note)
+    db.commit()
+    db.refresh(finding)
+    return finding
+
+
+def convert_finding(db: Session, finding: ProjectRiskFinding, *, user: User, note: str | None):
+    """Record the finding as a workflow recommendation for review. Nothing is executed or changed."""
+    from app.models.assistant import REC_NEW, AIRecommendation
+
+    if finding.recommendation_id:
+        existing = db.get(AIRecommendation, finding.recommendation_id)
+        if existing is not None:
+            return existing
+    if finding.status == FINDING_RESOLVED:
+        raise FindingActionError("Resolved findings cannot be converted.")
+    note = (note or "").strip() or None
+    evidence = json.loads(finding.evidence_json or "[]")
+    sources = [{"type": "control_tower_finding", "id": str(finding.id), "rule": finding.rule_id,
+                "source": finding.source or "operational"}]
+    if finding.prediction_id:
+        sources.append({"type": "prediction", "id": str(finding.prediction_id)})
+    description = finding.explanation + (f"\n\nNote: {note}" if note else "")
+    recommendation = AIRecommendation(
+        created_by_id=user.id,
+        project_id=finding.project_id,
+        module="control_tower",
+        category=finding.category,
+        title=finding.title[:200],
+        description=description,
+        evidence_json=json.dumps({"sources": sources, "evidence": evidence}, default=str),
+        suggested_action=finding.recommended_action,
+        suggested_owner_id=finding.owner_user_id,
+        priority=_PRIORITY_BY_SEVERITY.get(finding.severity, "medium"),
+        status=REC_NEW,
+    )
+    db.add(recommendation)
+    db.flush()
+    previous = finding.triage_status
+    now = _now()
+    finding.recommendation_id = recommendation.id
+    if finding.triage_status is None:
+        finding.triage_status = TRIAGE_INVESTIGATING
+        finding.triaged_at = now
+        finding.triaged_by_id = user.id
+    _record_event(db, finding, "converted", now, user_id=user.id, detail="Recorded as a recommendation for review.")
+    _log_triage(db, finding, user, previous, "convert", note)
+    db.commit()
+    db.refresh(recommendation)
+    return recommendation
+
+
 # --- Read model ---------------------------------------------------------------
 
 
@@ -1136,6 +1282,8 @@ class FindingQuery:
     project_id: UUID | None = None
     owner_id: str | None = None
     search: str | None = None
+    # None hides dismissed findings; "untriaged", "investigating" or "dismissed" select exactly.
+    triage: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1164,11 +1312,23 @@ def _apply_view(stmt, view: str):
     stmt = stmt.where(ProjectRiskFinding.status.in_(OPEN_FINDING_STATUSES))
     if view == "data_quality":
         return stmt.where(ProjectRiskFinding.category == "data_quality")
-    return stmt.where(ProjectRiskFinding.category != "data_quality")
+    if view == "predictive":
+        return stmt.where(ProjectRiskFinding.source == "predictive")
+    return stmt.where(ProjectRiskFinding.category != "data_quality", ProjectRiskFinding.source != "predictive")
+
+
+def _not_dismissed():
+    return or_(ProjectRiskFinding.triage_status.is_(None), ProjectRiskFinding.triage_status != TRIAGE_DISMISSED)
 
 
 def filtered_findings(base, query: FindingQuery):
     stmt = _apply_view(base, query.view)
+    if query.triage == "untriaged":
+        stmt = stmt.where(ProjectRiskFinding.triage_status.is_(None))
+    elif query.triage:
+        stmt = stmt.where(ProjectRiskFinding.triage_status == query.triage)
+    elif query.view != "resolved":
+        stmt = stmt.where(_not_dismissed())
     if query.severity:
         stmt = stmt.where(ProjectRiskFinding.severity == query.severity)
     if query.category:
@@ -1226,11 +1386,23 @@ def build_summary(db: Session, scope: FindingScope, today: date) -> ControlTower
             ProjectRiskFinding.severity,
             ProjectRiskFinding.project_id,
             ProjectRiskFinding.resolved_at,
+            ProjectRiskFinding.source,
+            ProjectRiskFinding.triage_status,
         )
     ).subquery()
     finding = sub.c
-    open_clause = finding.status.in_(OPEN_FINDING_STATUSES)
-    risk_clause = finding.category != "data_quality"
+    open_clause = and_(
+        finding.status.in_(OPEN_FINDING_STATUSES),
+        or_(finding.triage_status.is_(None), finding.triage_status != TRIAGE_DISMISSED),
+    )
+    predictive_clause = finding.source == "predictive"
+    risk_clause = and_(finding.category != "data_quality", finding.source != "predictive")
+    open_predictive = db.scalar(select(func.count()).select_from(sub).where(open_clause, predictive_clause))
+    dismissed = db.scalar(
+        select(func.count()).select_from(sub).where(
+            finding.status.in_(OPEN_FINDING_STATUSES), finding.triage_status == TRIAGE_DISMISSED
+        )
+    )
     by_severity = dict(
         db.execute(
             select(finding.severity, func.count())
@@ -1259,6 +1431,8 @@ def build_summary(db: Session, scope: FindingScope, today: date) -> ControlTower
     return ControlTowerSummary(
         open_risks=sum(by_severity.values()),
         open_data_quality=int(by_category.get("data_quality", 0)),
+        open_predictive=int(open_predictive or 0),
+        dismissed=int(dismissed or 0),
         not_assessable=int(not_assessable or 0),
         projects_with_risks=int(projects_with_risks or 0),
         projects_with_data_quality=int(projects_with_dq or 0),
@@ -1318,7 +1492,8 @@ def to_reads(db: Session, rows: list[tuple[ProjectRiskFinding, Project]]) -> lis
     users = users_by_id(
         db,
         {f.owner_user_id for f in findings if f.owner_user_id}
-        | {f.acknowledged_by_id for f in findings if f.acknowledged_by_id},
+        | {f.acknowledged_by_id for f in findings if f.acknowledged_by_id}
+        | {f.triaged_by_id for f in findings if f.triaged_by_id},
     )
     milestone_ids = {f.milestone_id for f in findings if f.milestone_id}
     milestones = (
@@ -1331,6 +1506,7 @@ def to_reads(db: Session, rows: list[tuple[ProjectRiskFinding, Project]]) -> lis
         rule = RULES.get(finding.rule_id)
         owner = users.get(finding.owner_user_id) if finding.owner_user_id else None
         acknowledged_by = users.get(finding.acknowledged_by_id) if finding.acknowledged_by_id else None
+        triaged_by = users.get(finding.triaged_by_id) if finding.triaged_by_id else None
         result.append(
             FindingRead(
                 id=finding.id,
@@ -1373,6 +1549,14 @@ def to_reads(db: Session, rows: list[tuple[ProjectRiskFinding, Project]]) -> lis
                 acknowledged_by_name=_user_label(acknowledged_by) if acknowledged_by else None,
                 acknowledgement_note=finding.acknowledgement_note,
                 is_recurrence=finding.previous_episode_id is not None,
+                source=finding.source or "operational",  # type: ignore[arg-type]
+                source_label=SOURCE_LABELS.get(finding.source or "operational", "Operational"),
+                prediction_id=finding.prediction_id,
+                triage_status=finding.triage_status,  # type: ignore[arg-type]
+                triage_note=finding.triage_note,
+                triaged_at=finding.triaged_at,
+                triaged_by_name=_user_label(triaged_by) if triaged_by else None,
+                recommendation_id=finding.recommendation_id,
             )
         )
     return result

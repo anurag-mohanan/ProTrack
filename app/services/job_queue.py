@@ -20,6 +20,7 @@ JOB_HISTORICAL_IMPORT = "historical_import"
 JOB_TIMESHEET_IMPORT = "timesheet_import"
 JOB_CONTROL_TOWER_EVALUATION = "control_tower_evaluation"
 JOB_AUTOMATION_SWEEP = "automation_sweep"
+JOB_PREDICTION_RUN = "prediction_run"
 
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
@@ -157,6 +158,14 @@ def _execute(db: Session, row: BackgroundJob) -> None:
         from app.services.automation.engine import run_sweeps
 
         logger.info("Automation sweep: %s", run_sweeps(db))
+        return
+    if row.job_type == JOB_PREDICTION_RUN:
+        from app.services.predictive.engine import PredictionRunInProgress, run_predictions
+
+        try:
+            run_predictions(db, trigger="job")
+        except PredictionRunInProgress:
+            logger.info("Prediction run already in progress; job skipped")
         return
     raise ValueError(f"Unknown job type: {row.job_type}")
 

@@ -322,6 +322,7 @@ class ActivityAction(enum.Enum):
     project_template_reconciled = "project_template_reconciled"
     milestone_lifecycle_changed = "milestone_lifecycle_changed"
     automation_rule_changed = "automation_rule_changed"
+    ai_recommendation_decided = "ai_recommendation_decided"
 
 
 class NotificationType(enum.Enum):
@@ -402,6 +403,7 @@ class EntityType(enum.Enum):
     it_license_pool = "it_license_pool"
     it_reservation = "it_reservation"
     onboarding_template = "onboarding_template"
+    ai_recommendation = "ai_recommendation"
 
 
 class CostNature(enum.Enum):

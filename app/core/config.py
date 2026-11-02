@@ -128,6 +128,17 @@ AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.openai.com/v1").strip() or "https://api.openai.com/v1"
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 
+# --- Engineering management assistant (Phase 6) -----------------------------
+# Uses the provider above. The key is read from the environment only and never
+# returned by the API, logged or stored.
+AI_ASSISTANT_ENABLED = _flag("AI_ASSISTANT_ENABLED", "true")
+AI_TEMPERATURE = max(0.0, min(1.0, _int("AI_TEMPERATURE_PERCENT", 10) / 100))
+AI_MAX_TOKENS = max(200, min(4000, _int("AI_MAX_TOKENS", 1200)))
+AI_TIMEOUT_SECONDS = max(5, min(120, _int("AI_TIMEOUT_SECONDS", 30)))
+AI_MAX_TOOL_ROUNDS = max(1, min(8, _int("AI_MAX_TOOL_ROUNDS", 4)))
+AI_RATE_LIMIT_PER_MINUTE = max(1, _int("AI_RATE_LIMIT_PER_MINUTE", 10))
+AI_MAX_INPUT_CHARS = max(200, min(8000, _int("AI_MAX_INPUT_CHARS", 2000)))
+
 
 def security_config_problems() -> list[str]:
     """Production-blocking security misconfigurations (hard startup blockers).

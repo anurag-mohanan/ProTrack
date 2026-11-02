@@ -2459,6 +2459,12 @@ from app.models.workflow import (  # noqa: E402, F401
     AutomationRule,
     ProjectTemplateReconciliation,
 )
+from app.models.assistant import (  # noqa: E402, F401
+    AIConversation,
+    AIMessage,
+    AIRecommendation,
+    AIToolExecution,
+)
 from app.models.commercial import (  # noqa: E402, F401
     FeatureFlag,
     Tenant,

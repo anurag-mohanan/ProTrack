@@ -6,6 +6,7 @@ from app.api.v1 import (
     admin_timesheets,
     ai,
     analytics,
+    assistant,
     auth,
     automation,
     calendar,
@@ -172,6 +173,7 @@ api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(control_tower.router)
 api_router.include_router(automation.router)
+api_router.include_router(assistant.router)
 api_router.include_router(forecasting.router)
 api_router.include_router(skills.router)
 api_router.include_router(finance.router)

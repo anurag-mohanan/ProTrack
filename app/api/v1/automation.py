@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select
 from app.api.auth_deps import get_current_user
 from app.api.deps import APIRouter, Depends, Query, Session, get_db
 from app.core.permissions import is_admin
+from app.models.assistant import AIRecommendation
 from app.models.enums import ActivityAction
 from app.models.models import Activity, Milestone, Project, User
 from app.models.workflow import (
@@ -35,7 +36,17 @@ def _require_admin(current_user: User = Depends(get_current_user), db: Session =
 
 router = APIRouter(prefix="/automation", tags=["automation"], dependencies=[Depends(_require_admin)])
 
-_DECISION_ACTIONS = (ActivityAction.milestone_lifecycle_changed, ActivityAction.automation_rule_changed)
+_DECISION_ACTIONS = (
+    ActivityAction.milestone_lifecycle_changed,
+    ActivityAction.automation_rule_changed,
+    ActivityAction.ai_recommendation_decided,
+)
+_ACTIVITY_KINDS = {
+    ActivityAction.milestone_lifecycle_changed: ("lifecycle", "Milestone lifecycle changed", "milestone", "Template reconciliation"),
+    ActivityAction.automation_rule_changed: ("rule_change", "Automation rule switched", "automation_rule", "Administrator"),
+    ActivityAction.ai_recommendation_decided: ("ai_recommendation", "Assistant recommendation decided", "ai_recommendation",
+                                               "Assistant recommendation review"),
+}
 
 
 class RuleToggle(BaseModel):
@@ -203,7 +214,7 @@ def review_execution(execution_id: UUID, payload: ReviewRequest, db: Session = D
 @router.get("/decision-audit")
 def decision_audit(
     search: str | None = None,
-    kind: Literal["template_change", "lifecycle", "rule_change", "automation"] | None = None,
+    kind: Literal["template_change", "lifecycle", "rule_change", "automation", "ai_recommendation"] | None = None,
     project_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -246,11 +257,12 @@ def decision_audit(
                 "approval_reference": f"reconciliation:{r.id}", "result": r.status, "error": r.error_message,
             })
 
-    if kind in (None, "lifecycle", "rule_change"):
+    if kind in (None, "lifecycle", "rule_change", "ai_recommendation"):
         actions = {
             None: _DECISION_ACTIONS,
             "lifecycle": (ActivityAction.milestone_lifecycle_changed,),
             "rule_change": (ActivityAction.automation_rule_changed,),
+            "ai_recommendation": (ActivityAction.ai_recommendation_decided,),
         }[kind]
         stmt = select(Activity).where(Activity.action.in_(actions))
         if start:
@@ -260,22 +272,30 @@ def decision_audit(
         if like:
             stmt = stmt.where(or_(Activity.new_value.ilike(like), Activity.old_value.ilike(like)))
         if project_id:
-            stmt = stmt.where(Activity.entity_id.in_(select(Milestone.id).where(Milestone.project_id == project_id)))
+            stmt = stmt.where(or_(
+                Activity.entity_id.in_(select(Milestone.id).where(Milestone.project_id == project_id)),
+                Activity.entity_id.in_(select(AIRecommendation.id).where(AIRecommendation.project_id == project_id)),
+            ))
         total += db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = db.scalars(stmt.order_by(Activity.created_at.desc()).limit(window)).all()
+        entity_ids = {a.entity_id for a in rows}
         owners = {
             m.id: m.project_id
-            for m in db.scalars(select(Milestone).where(Milestone.id.in_({a.entity_id for a in rows}))).all()
+            for m in db.scalars(select(Milestone).where(Milestone.id.in_(entity_ids))).all()
         } if rows else {}
+        if rows:
+            owners.update(dict(db.execute(
+                select(AIRecommendation.id, AIRecommendation.project_id).where(AIRecommendation.id.in_(entity_ids))
+            ).all()))
         for a in rows:
-            lifecycle = a.action == ActivityAction.milestone_lifecycle_changed
+            row_kind, label, target, trigger = _ACTIVITY_KINDS[a.action]
             items.append({
-                "kind": "lifecycle" if lifecycle else "rule_change", "id": a.id, "time": a.created_at, "actor_id": a.user_id,
-                "action": "Milestone lifecycle changed" if lifecycle else "Automation rule switched",
-                "target": "milestone" if lifecycle else "automation_rule", "target_id": a.entity_id,
+                "kind": row_kind, "id": a.id, "time": a.created_at, "actor_id": a.user_id,
+                "action": label, "target": target, "target_id": a.entity_id,
                 "project_id": owners.get(a.entity_id), "previous_value": a.old_value, "new_value": a.new_value,
-                "trigger": "Template reconciliation" if lifecycle else "Administrator", "reason": None,
-                "approval_reference": None, "result": a.outcome or "success", "error": None,
+                "trigger": trigger, "reason": None,
+                "approval_reference": f"ai_recommendation:{a.entity_id}" if row_kind == "ai_recommendation" else None,
+                "result": a.outcome or "success", "error": None,
             })
 
     if kind in (None, "automation"):

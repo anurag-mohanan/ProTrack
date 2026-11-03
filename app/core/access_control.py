@@ -127,6 +127,9 @@ SPECIAL_MANAGE_PROJECT_TEMPLATES = "manage_project_templates"
 SPECIAL_REVISE_ESTIMATES = "revise_estimates"
 SPECIAL_APPROVE_BASELINES = "approve_baselines"
 SPECIAL_REOPEN_PROJECTS = "reopen_projects"
+# --- Strategic management (objectives, initiatives, management reviews, actions) ---
+SPECIAL_MANAGE_STRATEGY = "manage_strategy"
+SPECIAL_APPROVE_STRATEGY = "approve_strategy"
 # --- Resource Planning shifts (wave 3) ---
 SPECIAL_MANAGE_RESOURCE_SHIFTS = "manage_resource_shifts"
 SPECIAL_ASSIGN_RESOURCE_SHIFTS = "assign_resource_shifts"
@@ -177,6 +180,8 @@ ALL_SPECIAL_PERMISSIONS: tuple[str, ...] = (
     SPECIAL_REVISE_ESTIMATES,
     SPECIAL_APPROVE_BASELINES,
     SPECIAL_REOPEN_PROJECTS,
+    SPECIAL_MANAGE_STRATEGY,
+    SPECIAL_APPROVE_STRATEGY,
     SPECIAL_MANAGE_RESOURCE_SHIFTS,
     SPECIAL_ASSIGN_RESOURCE_SHIFTS,
     SPECIAL_VIEW_SALARY,
@@ -227,6 +232,8 @@ EXECUTIVE_SPECIALS: frozenset[str] = frozenset(
         SPECIAL_VIEW_PROFITABILITY,
         SPECIAL_FINANCIAL_APPROVAL,
         SPECIAL_BUDGET_APPROVAL,
+        SPECIAL_MANAGE_STRATEGY,
+        SPECIAL_APPROVE_STRATEGY,
     }
 )
 
@@ -343,6 +350,7 @@ DEFAULT_SPECIAL_BY_ROLE: dict[str, frozenset[str]] = {
             SPECIAL_REVISE_ESTIMATES,
             SPECIAL_APPROVE_BASELINES,
             SPECIAL_REOPEN_PROJECTS,
+            SPECIAL_MANAGE_STRATEGY,
         }
     ),
     DESIGN_LEADER: frozenset(
@@ -474,6 +482,8 @@ def resolve_user_special_permissions(user: User, role_name: str) -> list[str]:
             SPECIAL_REVISE_ESTIMATES,
             SPECIAL_APPROVE_BASELINES,
             SPECIAL_REOPEN_PROJECTS,
+            SPECIAL_MANAGE_STRATEGY,
+            SPECIAL_APPROVE_STRATEGY,
         ):
             if perm in role_defaults:
                 perms.add(perm)

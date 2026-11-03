@@ -298,6 +298,9 @@ from app.db.phase111_ai_assistant_schema_sync import (
 from app.db.phase112_predictive_schema_sync import (
     ensure_phase112_predictive_foundation,
 )
+from app.db.phase113_management_schema_sync import (
+    ensure_phase113_management_foundation,
+)
 from app.db.phase106_shift_aware_allocation_schema_sync import (
     ensure_phase106_shift_aware_allocation_foundation,
 )
@@ -397,6 +400,7 @@ async def lifespan(app: FastAPI):
         ("phase111_ai_assistant", ensure_phase111_ai_assistant_foundation),
         # Finding triage columns are read by every step that loads ProjectRiskFinding.
         ("phase112_predictive", ensure_phase112_predictive_foundation),
+        ("phase113_management", ensure_phase113_management_foundation),
         ("project_actual_hours", ensure_project_actual_hours),
         ("project_health", ensure_project_health),
         ("timesheet_approval_comments", ensure_timesheet_approval_comments),

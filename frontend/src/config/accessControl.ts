@@ -93,6 +93,8 @@ export const SPECIAL_MANAGE_PROJECT_TEMPLATES = 'manage_project_templates';
 export const SPECIAL_REVISE_ESTIMATES = 'revise_estimates';
 export const SPECIAL_APPROVE_BASELINES = 'approve_baselines';
 export const SPECIAL_REOPEN_PROJECTS = 'reopen_projects';
+export const SPECIAL_MANAGE_STRATEGY = 'manage_strategy';
+export const SPECIAL_APPROVE_STRATEGY = 'approve_strategy';
 export const SPECIAL_MANAGE_RESOURCE_SHIFTS = 'manage_resource_shifts';
 export const SPECIAL_ASSIGN_RESOURCE_SHIFTS = 'assign_resource_shifts';
 export const SPECIAL_VIEW_IT_OPERATIONS = 'view_it_operations';
@@ -133,6 +135,8 @@ export type SpecialPermissionKey =
   | typeof SPECIAL_REVISE_ESTIMATES
   | typeof SPECIAL_APPROVE_BASELINES
   | typeof SPECIAL_REOPEN_PROJECTS
+  | typeof SPECIAL_MANAGE_STRATEGY
+  | typeof SPECIAL_APPROVE_STRATEGY
   | typeof SPECIAL_MANAGE_RESOURCE_SHIFTS
   | typeof SPECIAL_ASSIGN_RESOURCE_SHIFTS
   | typeof SPECIAL_VIEW_IT_OPERATIONS
@@ -173,6 +177,8 @@ export const ALL_SPECIAL_PERMISSIONS: SpecialPermissionKey[] = [
   SPECIAL_REVISE_ESTIMATES,
   SPECIAL_APPROVE_BASELINES,
   SPECIAL_REOPEN_PROJECTS,
+  SPECIAL_MANAGE_STRATEGY,
+  SPECIAL_APPROVE_STRATEGY,
   SPECIAL_MANAGE_RESOURCE_SHIFTS,
   SPECIAL_ASSIGN_RESOURCE_SHIFTS,
   SPECIAL_VIEW_IT_OPERATIONS,
@@ -214,6 +220,8 @@ export const SPECIAL_PERMISSION_LABELS: Record<SpecialPermissionKey, string> = {
   [SPECIAL_REVISE_ESTIMATES]: 'Revise Stage Estimates',
   [SPECIAL_APPROVE_BASELINES]: 'Approve Baseline Revisions',
   [SPECIAL_REOPEN_PROJECTS]: 'Reopen Completed Projects',
+  [SPECIAL_MANAGE_STRATEGY]: 'Manage Objectives, Reviews and Actions',
+  [SPECIAL_APPROVE_STRATEGY]: 'Approve Targets and Finalise Reviews',
   [SPECIAL_MANAGE_RESOURCE_SHIFTS]: 'Manage Resource Shifts',
   [SPECIAL_ASSIGN_RESOURCE_SHIFTS]: 'Assign Resource Shifts',
   [SPECIAL_VIEW_IT_OPERATIONS]: 'View IT Operations',

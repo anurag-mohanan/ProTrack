@@ -328,6 +328,11 @@ class ActivityAction(enum.Enum):
     prediction_scenario_saved = "prediction_scenario_saved"
     prediction_scenario_deleted = "prediction_scenario_deleted"
     risk_finding_triaged = "risk_finding_triaged"
+    strategy_objective_changed = "strategy_objective_changed"
+    strategy_target_changed = "strategy_target_changed"
+    strategy_initiative_changed = "strategy_initiative_changed"
+    management_review_changed = "management_review_changed"
+    management_action_changed = "management_action_changed"
 
 
 class NotificationType(enum.Enum):
@@ -355,6 +360,7 @@ class NotificationType(enum.Enum):
     ticket_needs_owner = "ticket_needs_owner"
     onboarding_task_update = "onboarding_task_update"
     workflow_automation = "workflow_automation"
+    management_action_assigned = "management_action_assigned"
 
 
 class WorkingModelCode(enum.Enum):
@@ -413,6 +419,10 @@ class EntityType(enum.Enum):
     prediction_model = "prediction_model"
     prediction_scenario = "prediction_scenario"
     risk_finding = "risk_finding"
+    strategic_objective = "strategic_objective"
+    strategic_initiative = "strategic_initiative"
+    management_review = "management_review"
+    management_action = "management_action"
 
 
 class CostNature(enum.Enum):

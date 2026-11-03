@@ -75,6 +75,8 @@ import {
   SPECIAL_REVISE_ESTIMATES,
   SPECIAL_APPROVE_BASELINES,
   SPECIAL_REOPEN_PROJECTS,
+  SPECIAL_MANAGE_STRATEGY,
+  SPECIAL_APPROVE_STRATEGY,
   type ModuleKey,
   type SpecialPermissionKey,
 } from '../config/accessControl';
@@ -209,6 +211,8 @@ const EXECUTIVE_SPECIALS: SpecialPermissionKey[] = [
   SPECIAL_VIEW_RESOURCE_PLANNING,
   SPECIAL_MANAGE_RESOURCE_SHIFTS,
   SPECIAL_ASSIGN_RESOURCE_SHIFTS,
+  SPECIAL_MANAGE_STRATEGY,
+  SPECIAL_APPROVE_STRATEGY,
 ];
 
 const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
@@ -253,6 +257,7 @@ const DEFAULT_SPECIAL_BY_ROLE: Record<string, SpecialPermissionKey[]> = {
     SPECIAL_REVISE_ESTIMATES,
     SPECIAL_APPROVE_BASELINES,
     SPECIAL_REOPEN_PROJECTS,
+    SPECIAL_MANAGE_STRATEGY,
   ],
   [ROLES.DESIGN_LEADER]: [
     SPECIAL_CREATE_PROJECTS,
@@ -341,6 +346,13 @@ const OPERATIONS_SECTION_NAV: SectionNavConfigItem[] = [
     label: 'Predictive Intelligence',
     path: '/predictive',
     icon: TimelineRoundedIcon,
+    visible: (ctx: AccessContext) => canViewReports(ctx),
+  },
+  {
+    module: MODULE_DASHBOARD,
+    label: 'Management Cockpit',
+    path: '/management',
+    icon: FactCheckRoundedIcon,
     visible: (ctx: AccessContext) => canViewReports(ctx),
   },
 ];
@@ -568,6 +580,8 @@ export function resolveSpecialPermissions(ctx: AccessContext): SpecialPermission
     SPECIAL_REVISE_ESTIMATES,
     SPECIAL_APPROVE_BASELINES,
     SPECIAL_REOPEN_PROJECTS,
+    SPECIAL_MANAGE_STRATEGY,
+    SPECIAL_APPROVE_STRATEGY,
   ] as const) {
     if (roleDefaults.includes(perm)) merged.add(perm);
   }
@@ -812,6 +826,15 @@ export function canApproveBaselines(roleNameOrContext: string | AccessContext): 
 
 export function canReopenProjects(roleNameOrContext: string | AccessContext): boolean {
   return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_REOPEN_PROJECTS);
+}
+
+export function canManageStrategy(roleNameOrContext: string | AccessContext): boolean {
+  const ctx = toAccessContext(roleNameOrContext);
+  return userHasSpecial(ctx, SPECIAL_MANAGE_STRATEGY) || userHasSpecial(ctx, SPECIAL_APPROVE_STRATEGY);
+}
+
+export function canApproveStrategy(roleNameOrContext: string | AccessContext): boolean {
+  return userHasSpecial(toAccessContext(roleNameOrContext), SPECIAL_APPROVE_STRATEGY);
 }
 
 export function canViewReports(roleNameOrContext: string | AccessContext): boolean {

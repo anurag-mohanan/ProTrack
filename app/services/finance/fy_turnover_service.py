@@ -58,6 +58,60 @@ def _quote_fx_to_inr(revision: QuoteRevision | None) -> Decimal:
     return Decimal("1")
 
 
+def quote_ledger_inr(db: Session, quote: Quote) -> dict:
+    """Dated INR invoice and payment amounts for one quote, using the turnover rules above.
+
+    Shared by the FY turnover control and management reporting so both read the same ledger:
+    ``invoices`` and ``payments`` are ``(date, amount_inr)`` pairs, ``outstanding_inr`` is the
+    current balance due, ``awarded_inr`` the current revision value in INR (as the Finance
+    dashboard counts it) and ``awarded_on`` its effective quoted date (``None`` when undated).
+    """
+    from app.services.finance.plan_sales_from_quotes_service import effective_quoted_date
+
+    revision = _current_revision(db, quote)
+    fx = _quote_fx_to_inr(revision)
+    invoices: list[tuple[date, Decimal]] = []
+    payments: list[tuple[date, Decimal]] = []
+    cash: dict | None = None
+
+    def summary() -> dict:
+        nonlocal cash
+        if cash is None:
+            cash = summarize_quote_cash(db, quote, revision=revision)
+        return cash
+
+    invoice_lines = list(quote.invoice_lines or [])
+    payment_lines = list(quote.payment_lines or [])
+    if invoice_lines:
+        invoices = [(line.line_date, _d(line.amount) * fx) for line in invoice_lines if line.line_date]
+    elif quote.is_invoiced and quote.invoiced_date is not None:
+        # Legacy flag-only invoice: recognize full contracted revenue on invoiced_date.
+        amount = _d(summary()["total_invoiced"])
+        if amount <= 0 and revision is not None:
+            amount = _d(revision.quoted_revenue)
+        if amount > 0:
+            invoices = [(quote.invoiced_date, amount * fx)]
+    if payment_lines:
+        payments = [(line.line_date, _d(line.amount) * fx) for line in payment_lines if line.line_date]
+    elif quote.is_paid and quote.paid_date is not None:
+        amount = _d(summary()["total_paid"])
+        if amount <= 0 and revision is not None:
+            amount = _d(revision.quoted_revenue)
+        if amount > 0:
+            payments = [(quote.paid_date, amount * fx)]
+
+    base = _d(revision.base_quoted_revenue_inr) if revision else Decimal("0")
+    quoted = _d(revision.quoted_revenue) if revision else Decimal("0")
+    return {
+        "invoices": invoices,
+        "payments": payments,
+        "outstanding_inr": _d(summary()["balance_due"]) * fx,
+        "awarded_inr": base if base > 0 else quoted,
+        "awarded_on": effective_quoted_date(quote, revision),
+        "currency_code": quote.currency_code,
+    }
+
+
 def build_fy_turnover_control(
     db: Session,
     *,
@@ -87,40 +141,18 @@ def build_fy_turnover_control(
     if team_id is not None:
         stmt = stmt.where(Quote.team_id == team_id)
 
+    outstanding = Decimal("0.00")
     for quote in db.scalars(stmt).all():
-        revision = _current_revision(db, quote)
-        fx = _quote_fx_to_inr(revision)
-        invoices = list(quote.invoice_lines or [])
-        payments = list(quote.payment_lines or [])
-
-        if invoices:
-            for line in invoices:
-                idx = month_index_for_date(fy_start, line.line_date)
-                if idx is not None:
-                    turnover_by_month[idx] += _d(line.amount) * fx
-        elif quote.is_invoiced and quote.invoiced_date is not None:
-            # Legacy flag-only invoice: recognize full contracted revenue on invoiced_date.
-            cash = summarize_quote_cash(db, quote, revision=revision)
-            amount = _d(cash["total_invoiced"])
-            if amount <= 0 and revision is not None:
-                amount = _d(revision.quoted_revenue)
-            idx = month_index_for_date(fy_start, quote.invoiced_date)
-            if idx is not None and amount > 0:
-                turnover_by_month[idx] += amount * fx
-
-        if payments:
-            for line in payments:
-                idx = month_index_for_date(fy_start, line.line_date)
-                if idx is not None:
-                    cash_by_month[idx] += _d(line.amount) * fx
-        elif quote.is_paid and quote.paid_date is not None:
-            cash = summarize_quote_cash(db, quote, revision=revision)
-            amount = _d(cash["total_paid"])
-            if amount <= 0 and revision is not None:
-                amount = _d(revision.quoted_revenue)
-            idx = month_index_for_date(fy_start, quote.paid_date)
-            if idx is not None and amount > 0:
-                cash_by_month[idx] += amount * fx
+        ledger = quote_ledger_inr(db, quote)
+        for when, amount in ledger["invoices"]:
+            idx = month_index_for_date(fy_start, when)
+            if idx is not None:
+                turnover_by_month[idx] += amount
+        for when, amount in ledger["payments"]:
+            idx = month_index_for_date(fy_start, when)
+            if idx is not None:
+                cash_by_month[idx] += amount
+        outstanding += ledger["outstanding_inr"]
 
     months_out: list[dict] = []
     for i, window in enumerate(windows):
@@ -185,14 +217,6 @@ def build_fy_turnover_control(
     if elapsed_rows:
         highest = max(elapsed_rows, key=lambda r: r["turnover_inr"])
         lowest = min(elapsed_rows, key=lambda r: r["turnover_inr"])
-
-    outstanding = Decimal("0.00")
-    stmt_out = select(Quote).where(Quote.is_active.is_(True))
-    if team_id is not None:
-        stmt_out = stmt_out.where(Quote.team_id == team_id)
-    for quote in db.scalars(stmt_out).all():
-        cash = summarize_quote_cash(db, quote)
-        outstanding += _d(cash["balance_due"]) * _quote_fx_to_inr(_current_revision(db, quote))
 
     return {
         "fy_label": ctx["fy_label"],

@@ -88,6 +88,7 @@ const OrganizationChartPage = lazy(() => import('./pages/OrganizationChartPage')
 const EngineeringSkillsPage = lazy(() => import('./pages/EngineeringSkillsPage'));
 const AssistantPage = lazy(() => import('./pages/AssistantPage'));
 const PredictivePage = lazy(() => import('./pages/PredictivePage'));
+const ManagementPage = lazy(() => import('./pages/ManagementPage'));
 const AnalyticsHubPage = lazy(() =>
   import('./pages/AnalyticsHubPage').then((module) => ({
     default: module.AnalyticsHubPage,
@@ -370,6 +371,14 @@ export default function App() {
                         element={
                           <Suspense fallback={<LoadingState message="Loading forecasts…" />}>
                             <PredictivePage />
+                          </Suspense>
+                        }
+                      />
+                      <Route
+                        path="/management"
+                        element={
+                          <Suspense fallback={<LoadingState message="Loading management cockpit…" />}>
+                            <ManagementPage />
                           </Suspense>
                         }
                       />

@@ -9,9 +9,10 @@ from app.services.assistant.types import ToolInputError, ToolSpec
 
 
 def _all_specs() -> list[ToolSpec]:
-    from app.services.assistant.tools import finance, insights, predictions, projects, recommend, resources
+    from app.services.assistant.tools import finance, insights, predictions, projects, recommend, resources, strategy
 
-    return [*projects.SPECS, *resources.SPECS, *finance.SPECS, *insights.SPECS, *predictions.SPECS, *recommend.SPECS]
+    return [*projects.SPECS, *resources.SPECS, *finance.SPECS, *insights.SPECS, *strategy.SPECS, *predictions.SPECS,
+            *recommend.SPECS]
 
 
 def tool_specs() -> dict[str, ToolSpec]:

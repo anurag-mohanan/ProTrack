@@ -27,6 +27,7 @@ from app.api.v1 import (
     workstation_packages,
     timesheet_imports,
     lookups,
+    management,
     milestones,
     non_productive_codes,
     notifications,
@@ -177,6 +178,7 @@ api_router.include_router(automation.router)
 api_router.include_router(assistant.router)
 api_router.include_router(forecasting.router)
 api_router.include_router(predictions.router)
+api_router.include_router(management.router)
 api_router.include_router(skills.router)
 api_router.include_router(finance.router)
 api_router.include_router(hr.router)

@@ -20,7 +20,7 @@ class Suggestion:
     text: str
     tool: str
     args: dict = field(default_factory=dict)
-    needs: str = "projects"  # projects | quotes | skills | predictions
+    needs: str = "projects"  # projects | quotes | skills | predictions | objectives
 
 
 SUGGESTIONS: tuple[Suggestion, ...] = (
@@ -46,6 +46,14 @@ SUGGESTIONS: tuple[Suggestion, ...] = (
     Suggestion("control-tower", "Management", "Summarise the Control Tower findings.", "get_control_tower_summary", {}),
     Suggestion("remaining-effort", "Management", "Which open projects have the most remaining effort?",
                "get_effort_forecast", {}),
+    Suggestion("fy-performance", "Management", "How did Prosohm perform this financial year?",
+               "get_business_performance", {}, needs="quotes"),
+    Suggestion("stage-hours", "Management", "Which engineering stages consumed the most hours this financial year?",
+               "get_engineering_operations", {}),
+    Suggestion("objectives-at-risk", "Management", "Which strategic objectives are at risk?",
+               "get_strategic_objectives", {"behind_plan_only": True}, needs="objectives"),
+    Suggestion("management-focus", "Management", "What should management focus on this month?",
+               "get_management_focus", {}),
     Suggestion("likely-late", "Predictions", "Which projects are most likely to miss their delivery dates?",
                "list_project_predictions", {"type": "delivery"}, needs="predictions"),
     Suggestion("likely-overrun", "Predictions", "Which projects are likely to exceed their approved hours?",
@@ -65,6 +73,10 @@ def _has_data(ctx: AssistantContext, needs: str, cache: dict[str, bool]) -> bool
             cache[needs] = bool(ctx.db.scalar(select(exists().where(Quote.is_active.is_(True)))))
         elif needs == "skills":
             cache[needs] = bool(ctx.db.scalar(select(exists().where(Skill.is_active.is_(True)))))
+        elif needs == "objectives":
+            from app.models.management import StrategicObjective
+
+            cache[needs] = bool(ctx.db.scalar(select(exists().where(StrategicObjective.status != "cancelled"))))
         elif needs == "predictions":
             from app.models.prediction import PREDICTED, Prediction
 
